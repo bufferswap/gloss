@@ -10,5 +10,9 @@
   :pathname "src"
   :serial t
   :components ((:file "package")
-               (:file "vao")
-               (:file "shader")))
+               (:module "vao"
+                :components
+                ((:file "vao")))
+               (:module "shader"
+                :components
+                ((:file "shader")))))
