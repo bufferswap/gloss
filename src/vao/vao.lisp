@@ -18,14 +18,12 @@
 (defun add-attributes (attribute-set &rest attribute-specs)
   (loop :for (name . data) :in attribute-specs
         :for attr = (apply #'make-attribute attribute-set name data)
-        :do (setf (gethash name attribute-set) attr))
-  attribute-set)
+        :do (setf (gethash name attribute-set) attr)))
 
 (defun assign-attribute-locations (attribute-specs)
   (loop :for attr :in attribute-specs
         :for location = 0 :then (incf location)
-        :do (setf (getf (cdr attr) :location) location))
-  attribute-specs)
+        :do (setf (getf (cdr attr) :location) location)))
 
 (defun attribute-location-valid-p (attribute)
   (let ((location (getf (cdr attribute) :location)))
