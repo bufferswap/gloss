@@ -4,6 +4,7 @@
 
 (defstruct (attribute (:constructor %make-attribute))
   (type :float)
+  (location nil)
   (count 1)
   (normalizep nil)
   (divisor 0)
@@ -20,45 +21,38 @@
         :do (setf (gethash name attribute-set) attr))
   attribute-set)
 
-(defun remove-attributes (attribute-set &rest attribute-names)
-  (loop :for name :in attribute-names
-        :do (remhash name attribute-set))
-  attribute-set)
+(defun assign-attribute-locations (attribute-specs)
+  (loop :for attr :in attribute-specs
+        :for location = 0 :then (incf location)
+        :do (setf (getf (cdr attr) :location) location))
+  attribute-specs)
 
-(defun %make-attribute-set (&rest attribute-specs)
+(defun attribute-location-valid-p (attribute)
+  (let ((location (getf (cdr attribute) :location)))
+    (and (integerp location)
+         (not (minusp location)))))
+
+(defun ensure-attribute-locations (attribute-specs)
+  (let ((count (count-if #'attribute-location-valid-p attribute-specs)))
+    (cond
+      ((= count 0)
+       (assign-attribute-locations attribute-specs))
+      ((not (= count (length attribute-specs)))
+       (error "All attributes must have a non-negative :LOCATION defined.")))))
+
+(defun make-attribute-set (&rest attribute-specs)
   (let ((attribute-set (make-hash-table)))
+    (ensure-attribute-locations attribute-specs)
     (apply #'add-attributes attribute-set attribute-specs)
     attribute-set))
 
-(defmacro make-attribute-set (options &body attribute-specs)
-  (declare (ignore options))
-  `(apply #'%make-attribute-set ',attribute-specs))
+;;; Usage
 
-;; type-checking validity table
-;; this is just to remind what needs to be type-checked later on
-#++(defvar *attr-validity-table*
-  '((:half-float . (:version 3.0))
-    (:float . (:version 3.0))
-    (:byte . (:version 3.0))
-    (:unsigned-byte . (:version 3.0))
-    (:short . (:version 3.0))
-    (:unsigned-short . (:version 3.0))
-    (:int . (:version 3.0))
-    (:unsigned-int . (:version 3.0))
-    (:int-2-10-10-10-rev . (:version 3.2 :count 4))
-    (:unsigned-int-2-10-10-10-rev . (:version 3.2 :count 4))
-    (:unsigned-int-10f-11f-11f-rev . (:version 4.4 :count 3))))
-
-;; usage make-attribute-set is a macro that so far just allows defining
-;; attribute specs the same way as its functional expansion,
-;; %make-attribute-set, except without QUOTE'ing each spec.
-#++(let ((attr-set
-        (make-attribute-set ()
-          (position :type :float :count 3 :accessors (px py pz))
-          (normals :type :float :count 3 :accessors (nx ny nz))
-          (uvs :type :float :count 3 :accessors (uvx uvy uvz)))))
+#++(let ((attr-set (make-attribute-set
+                 '(position :type :float :count 3 :accessors (px py pz))
+                 '(normals :type :float :count 3 :accessors (nx ny nz))
+                 '(uvs :type :float :count 3 :accessors (uvx uvy uvz)))))
   (add-attributes attr-set
                   '(some-attr-1 :type :byte :count 2)
                   '(some-attr-2 :type :unsigned-byte :count 2))
-  (remove-attributes attr-set 'some-attr-1)
   attr-set)
