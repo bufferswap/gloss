@@ -1,6 +1,22 @@
 (in-package :gloss.vao)
 
-;;; VAO Attributes
+;;; Attribute Sets
+
+(defstruct (attribute-set (:constructor %make-attribute-set)
+                          (:conc-name nil))
+  (attributes (make-hash-table)))
+
+(defun %add-attributes (attribute-set &rest attribute-specs)
+  (loop :with attributes = (attributes attribute-set)
+        :for (name . data) :in attribute-specs
+        :for attr = (apply #'make-attribute attributes name data)
+        :do (setf (gethash name attributes) attr)))
+
+(defun make-attribute-set (&rest attribute-specs)
+  (let ((attribute-set (%make-attribute-set)))
+    (ensure-attribute-locations attribute-specs)
+    (apply #'%add-attributes attribute-set attribute-specs)
+    (attributes attribute-set)))
 
 (defstruct (attribute (:constructor %make-attribute))
   (type :float)
@@ -10,15 +26,12 @@
   (divisor 0)
   (accessors nil))
 
+;;; Attributes
+
 (defun make-attribute (attribute-set attribute-name &rest attribute-data)
   (if (nth-value 1 (gethash attribute-name attribute-set))
       (error "Attribute ~A is defined more than once." attribute-name)
       (apply #'%make-attribute attribute-data)))
-
-(defun add-attributes (attribute-set &rest attribute-specs)
-  (loop :for (name . data) :in attribute-specs
-        :for attr = (apply #'make-attribute attribute-set name data)
-        :do (setf (gethash name attribute-set) attr)))
 
 (defun assign-attribute-locations (attribute-specs)
   (loop :for attr :in attribute-specs
@@ -37,12 +50,6 @@
        (assign-attribute-locations attribute-specs))
       ((not (= count (length attribute-specs)))
        (error "All attributes must have a non-negative :LOCATION defined.")))))
-
-(defun make-attribute-set (&rest attribute-specs)
-  (let ((attribute-set (make-hash-table)))
-    (ensure-attribute-locations attribute-specs)
-    (apply #'add-attributes attribute-set attribute-specs)
-    attribute-set))
 
 ;;; Usage
 
