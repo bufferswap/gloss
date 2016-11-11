@@ -12,7 +12,9 @@
   :components ((:file "package")
                (:module "vao"
                 :components
-                ((:file "vao")))
+                ((:file "attributes")
+                 (:file "layout")
+                 (:file "vao")))
                (:module "shader"
                 :components
                 ((:file "shader")))))
