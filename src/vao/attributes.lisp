@@ -8,15 +8,15 @@
 
 (defun %add-attributes (attribute-set &rest attribute-specs)
   (loop :with attributes = (attributes attribute-set)
-        :for (name . data) :in attribute-specs
-        :for attr = (apply #'make-attribute attributes name data)
-        :do (setf (gethash name attributes) attr)))
+     :for (name . data) :in attribute-specs
+     :for attr = (apply #'make-attribute attributes name data)
+     :do (setf (gethash name attributes) attr)))
 
 (defun make-attribute-set (&rest attribute-specs)
   (let ((attribute-set (%make-attribute-set)))
     (ensure-attribute-locations attribute-specs)
     (apply #'%add-attributes attribute-set attribute-specs)
-    (attributes attribute-set)))
+    attribute-set))
 
 ;;; Attributes
 
@@ -40,8 +40,8 @@
 
 (defun assign-attribute-locations (attribute-specs)
   (loop :for attr :in attribute-specs
-        :for location = 0 :then (incf location)
-        :do (setf (getf (cdr attr) :location) location)))
+     :for location = 0 :then (incf location)
+     :do (setf (getf (cdr attr) :location) location)))
 
 (defun ensure-attribute-locations (attribute-specs)
   (let ((count (count-if #'attribute-location-valid-p attribute-specs)))
@@ -54,10 +54,10 @@
 ;;; Usage
 
 #++(let ((attr-set (make-attribute-set
-                 '(position :type :float :count 3 :accessors (px py pz))
-                 '(normals :type :float :count 3 :accessors (nx ny nz))
-                 '(uvs :type :float :count 3 :accessors (uvx uvy uvz)))))
-  (add-attributes attr-set
-                  '(some-attr-1 :type :byte :count 2)
-                  '(some-attr-2 :type :unsigned-byte :count 2))
-  attr-set)
+                    '(position :type :float :count 3 :accessors (px py pz))
+                    '(normals :type :float :count 3 :accessors (nx ny nz))
+                    '(uvs :type :float :count 3 :accessors (uvx uvy uvz)))))
+     (add-attributes attr-set
+                     '(some-attr-1 :type :byte :count 2)
+                     '(some-attr-2 :type :unsigned-byte :count 2))
+     attr-set)
