@@ -10,6 +10,7 @@
 
 (defstruct (datastore-layout-set (:constructor %make-datastore-layout-set)
                                  (:conc-name nil))
+  attr-set
   primitive-kind
   (datastore-layouts (make-hash-table))
   (attribute-view (make-hash-table)))
@@ -86,6 +87,7 @@
 
     ;; all done, package everything up and return it!
     (%make-datastore-layout-set
+     :attr-set attr-set
      :primitive-kind primitive-kind
      :datastore-layouts hash/name->layout
      :attribute-view hash/attr-view)))
