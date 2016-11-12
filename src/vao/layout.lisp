@@ -19,7 +19,7 @@
   properties
   template)
 
-;; This does no error checking. It needs fixing.
+;; This does little error checking, it shoud do more.
 (defun make-layout-set (attr-set primitive-kind &rest datastore-specs)
   (let (;; The hash table holding the datastore layout information
         (hash/name->layout (make-hash-table :test #'eq))
