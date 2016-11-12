@@ -12,8 +12,8 @@
 
 (defun make-attribute (attribute-set attribute-name &rest attribute-data)
   (if (nth-value 1 (gethash attribute-name attribute-set))
-      (gloss-error "Attribute is defined more than once."
-                   :value (gethash attribute-name attribute-set))
+      (gloss-error "Attribute name is defined more than once."
+                   :value attribute-name)
       (apply #'%make-attribute attribute-data)))
 
 (defun %attribute-location-valid-p (attribute)
