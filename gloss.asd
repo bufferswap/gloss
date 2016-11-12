@@ -10,6 +10,7 @@
   :pathname "src"
   :serial t
   :components ((:file "package")
+               (:file "error")
                (:module "vao"
                 :components
                 ((:file "attributes")
