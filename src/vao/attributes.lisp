@@ -2,7 +2,9 @@
 
 ;;; Attributes
 
-(defstruct (attribute (:constructor %make-attribute))
+(defstruct (attribute (:constructor %make-attribute)
+                      (:conc-name attr-))
+  (name nil)
   (type :float)
   (location nil)
   (count 1)
@@ -10,44 +12,44 @@
   (divisor 0)
   (accessors nil))
 
-(defun make-attribute (attribute-set attribute-name &rest attribute-data)
-  (if (nth-value 1 (gethash attribute-name attribute-set))
-      (gloss-error "Attribute name is defined more than once."
-                   :value attribute-name)
-      (apply #'%make-attribute attribute-data)))
-
 (defun %attribute-location-valid-p (attribute)
   (let ((location (getf (cdr attribute) :location)))
-    (and (integerp location)
-         (not (minusp location)))))
+    (identity location)))
 
-(defun %assign-attribute-locations (attribute-specs)
-  (loop :for attr :in attribute-specs
-        :for location = 0 :then (incf location)
-        :do (setf (getf (cdr attr) :location) location)))
-
-(defun %ensure-attribute-locations (attribute-specs)
-  (let ((count (count-if #'%attribute-location-valid-p attribute-specs)))
-    (cond
-      ((= count 0)
-       (%assign-attribute-locations attribute-specs))
-      ((not (= count (length attribute-specs)))
-       (gloss-error "All attributes must have a non-negative :LOCATION defined."
-                    :value attribute-specs)))))
+(defun %ensure-attribute-locations (attribute-set)
+  (with-slots (spec) attribute-set
+    (let ((count (count-if #'%attribute-location-valid-p spec)))
+      (cond
+        ((= count 0)
+         (%assign-attribute-locations attribute-set))
+        ((not (= count (length spec)))
+         ;; TODO: Make this a real error message instead of the default
+         ;; undefined error.
+         (gloss-error nil))))))
 
 ;;; Attribute Sets
 
 (defstruct (attribute-set (:constructor %make-attribute-set)
                           (:conc-name nil))
+  spec
   (attributes (make-hash-table)))
 
-(defun make-attribute-set (&rest attribute-specs)
-  (let ((attribute-set (%make-attribute-set)))
-    (%ensure-attribute-locations attribute-specs)
+(defun %assign-attribute-locations (attribute-set)
+  (loop :for (name . properties) :in (spec attribute-set)
+        :for attr = (gethash name (attributes attribute-set))
+        :for location = 0 :then (incf location)
+        :do (setf (attr-location attr) location
+                  (getf properties :location) location)))
+
+(defun make-attribute-set (&rest spec)
+  (let ((attribute-set (%make-attribute-set :spec (copy-seq spec))))
     (loop :with attributes = (attributes attribute-set)
-          :for (name . data) :in attribute-specs
-          :for attr = (apply #'make-attribute attributes name data)
+          :for (name . properties) :in spec
+          :for attr = (apply #'%make-attribute :name name properties)
+          :when (nth-value 1 (gethash name attributes))
+            :do (gloss-error 'attribute-name-duplicated name)
           :do (setf (gethash name attributes) attr))
+    (%ensure-attribute-locations attribute-set)
     attribute-set))
 
 ;;; Usage

@@ -13,7 +13,8 @@
                (:file "util")
                (:module "vao"
                 :components
-                ((:file "attributes")
+                ((:file "conditions")
+                 (:file "attributes")
                  (:file "layout")
                  (:file "vao")))
                (:module "shader"

@@ -3,7 +3,7 @@
 (defpackage #:gloss.util
   (:use #:cl)
   (:export #:gloss-error
-           #:gloss-warn))
+           #:gloss-message))
 
 (defpackage #:gloss.vao
   (:use #:cl
