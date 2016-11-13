@@ -5,35 +5,19 @@
             :initarg :message)
    (value :reader gloss-error-value
           :initarg :value
-          :initform nil)
-   (kind :reader gloss-error-kind
-         :initarg :kind
-         :initform :gloss-kind-unknown)))
+          :initform nil)))
 
 (defmethod print-object ((object gloss-error) stream)
   (print-unreadable-object (object stream :type t)
-    (let ((*print-pretty* t)
-          (*print-circle* nil)
-          (*print-escape* nil)
-          (*print-gensym* nil)
-          (*print-level* nil)
-          (*print-length* nil)
-          (*print-lines* nil)
-          (*print-miser-width* nil)
-          (*print-right-margin* most-positive-fixnum))
-      (apply #'format stream
-             (concatenate 'string "[Kind: ~S]: "
-                          (gloss-error-message object))
-             (gloss-error-kind object)
-             (gloss-error-value object)))))
+    (format stream "~S~@[: ~{~S~^, ~}~]"
+            (gloss-error-message object)
+            (gloss-error-value object))))
 
-(defgeneric gloss-message (kind))
+(defgeneric gloss-message (kind)
+  (:method (kind)
+    "An unknown error has occurred."))
 
-(defmethod gloss-message (kind)
-  "An unknown error has occurred.")
-
-(defun gloss-error (kind &rest value)
+(defun gloss-error (kind &optional value)
   (error 'gloss-error
-         :kind kind
          :message (gloss-message kind)
-         :value (copy-seq value)))
+         :value value))

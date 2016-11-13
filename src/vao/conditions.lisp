@@ -1,35 +1,22 @@
 (in-package :gloss.vao)
 
-;; While most of these represent some sort of error condition, some are
-;; warnings, or other informative messages.
+(defmethod gloss-message ((kind (eql 'attribute-name-duplicated)))
+  "Attribute name is defined more than once.")
 
-;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; Messages about individual attributes
-;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+(defmethod gloss-message ((kind (eql 'attribute-locations-undefined)))
+  "All attributes in this set have no :LOCATION defined")
 
-(defmethod gloss-message ((kind (eql 'attribute/name-duplicated)))
-  "Attribute name is defined more than once: ~A")
+(defmethod gloss-message ((kind (eql 'attribute-locations-partially-defined)))
+  "If any attributes has :LOCATION defined, other attributes must.
+Attributes that need locations defined")
 
-;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; Messages about attribute sets.
-;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+(defmethod gloss-message ((kind (eql 'attribute-locations-type-error)))
+  "Attribute :LOCATION must be an integer.
+Attributes with locations that are not an integers")
 
-(defmethod gloss-message ((kind
-                           (eql 'attribute-set/locations-not-defined)))
-  "All attributes in this set have no :location defined: ~(~S~)")
+(defmethod gloss-message ((kind (eql 'attribute-locations-range-error)))
+  "Attribute :LOCATION must not be negative.
+Attributes with locations that are negative")
 
-(defmethod gloss-message ((kind
-                           (eql 'attribute-set/locations-partially-defined)))
-  "If some attributes use :location, all must use them. Here is a list of attributes that need :location defined in them: ~(~S~)")
-
-(defmethod gloss-message ((kind
-                           (eql 'attribute-set/location-type-error)))
-  "Attribute :location values must be integers. Here is a list of attributes whose :location values are not integers: ~(~S~)")
-
-(defmethod gloss-message ((kind
-                           (eql 'attribute-set/location-range-error)))
-  "Attribute :location values must be integers greater than or equal to zero. Here is a list of attributes whose :location values are negative: ~(~S~)")
-
-(defmethod gloss-message ((kind
-                           (eql 'attribute-set/locations-defined)))
-  "All attributes in this set have :location properly defined: ~(~S~)")
+(defmethod gloss-message ((kind (eql 'attribute-locations-defined)))
+  "All attributes in this set have :LOCATION properly defined")
