@@ -16,7 +16,8 @@
                 ((:file "conditions")
                  (:file "attributes")
                  (:file "layout")
-                 (:file "vao")))
+                 (:file "vao")
+                 (:file "test")))
                (:module "shader"
                 :components
                 ((:file "shader")))))

@@ -5,13 +5,17 @@
             :initarg :message)
    (value :reader gloss-error-value
           :initarg :value
-          :initform nil)))
+          :initform nil)
+   (kind :reader gloss-error-kind
+         :initarg :kind
+         :initform :unknown-kind)))
 
 (defmethod print-object ((object gloss-error) stream)
   (print-unreadable-object (object stream :type t)
-    (format stream "~S~@[: ~{~S~^, ~}~]"
-            (gloss-error-message object)
-            (gloss-error-value object))))
+    (apply #'format stream
+           (concatenate 'string "~&"
+                        (gloss-error-message object))
+           (gloss-error-value object))))
 
 (defgeneric gloss-message (kind)
   (:method (kind)
@@ -20,4 +24,5 @@
 (defun gloss-error (kind &optional value)
   (error 'gloss-error
          :message (gloss-message kind)
-         :value value))
+         :value value
+         :kind kind))
