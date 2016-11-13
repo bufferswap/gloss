@@ -85,7 +85,7 @@
        :for (name . properties) :in spec
        :for attr = (apply #'%make-attribute :name name properties)
        :when (nth-value 1 (gethash name attributes))
-       :do (gloss-error 'attribute-name-duplicated name)
+       :do (gloss-error 'attribute/name-duplicated name)
        :do (setf (gethash name attributes) attr))
 
     (multiple-value-bind (analysis reasons)
