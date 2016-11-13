@@ -91,8 +91,6 @@
     (multiple-value-bind (analysis reasons)
         (%analyze-location-usage attribute-set)
       (destructuring-bind (reason attr-name-set) reasons
-        (format t "Analysis results:~%  analysis: ~S~%  reasons: ~S~%"
-                analysis reasons)
         (ecase analysis
           (:defined
            ;; nothing to do, user did everything necessary.
