@@ -14,7 +14,7 @@
 ;; This requires an OpenGL context when called.
 (defun make-vao (layout-set)
   (apply #'make-instance 'vao
-         :vao-index (car (gl:gen-vertex-arrays 1))
+         :vao-index (gl:gen-vertex-array)
          :vao-layout-set layout-set))
 
 (defun vao-bind (vao)
@@ -27,6 +27,7 @@
 
 (defun vao-destroy (vao)
   (gl:delete-vertex-arrays (vao-index vao))
+  ;; TODO: gl:data-buffers the datastore buffers too.
   (setf (vao-index vao) NIL)
   vao)
 
