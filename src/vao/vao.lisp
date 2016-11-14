@@ -32,3 +32,7 @@
 
 (defun vao-valid-p (vao)
   (vao-index vao))
+
+;; The draw calls will require some information from the
+;; datastore-manager object. Since that is fluid now, we can't write
+;; them until the datastore-manager code is completed.
