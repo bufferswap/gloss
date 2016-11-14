@@ -13,16 +13,17 @@
 (defmethod print-object ((object gloss-error) stream)
   (print-unreadable-object (object stream :type t)
     (apply #'format stream
-           (concatenate 'string "~&"
+           (concatenate 'string "[~A]~&"
                         (gloss-error-message object))
+           (gloss-error-kind object)
            (gloss-error-value object))))
 
 (defgeneric gloss-message (kind)
   (:method (kind)
     "An unknown error has occurred."))
 
-(defun gloss-error (kind &optional value)
+(defun gloss-error (kind &rest value)
   (error 'gloss-error
          :message (gloss-message kind)
-         :value value
+         :value (copy-seq value)
          :kind kind))
