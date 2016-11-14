@@ -5,13 +5,15 @@
   :version "0.1"
   :license "MIT"
   :description "A system aiming to simplify usage of the modern OpenGL interface."
-  :depends-on (#:defpackage-plus
-	       #:alexandria
-	       #:cl-opengl)
+  :depends-on (#:alexandria
+               #:cl-opengl)
   :pathname "src"
   :serial t
   :components ((:file "package")
-               (:file "util")
+               (:module "common"
+                :components
+                ((:file "util")
+                 (:file "conditions")))
                (:module "vao"
                 :components
                 ((:file "conditions")

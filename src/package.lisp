@@ -1,24 +1,19 @@
 (in-package :cl-user)
 
-(defpackage #:gloss.util
-  (:use #:cl)
+(defpackage #:gloss.common
+  (:use #:cl
+        #:alexandria)
   (:export #:gloss-error
-           #:gloss-message))
+           #:gloss-message
+           #:select-if))
 
 (defpackage #:gloss.vao
   (:use #:cl
         #:alexandria
-        #:gloss.util)
+        #:gloss.common)
   (:export #:make-attribute-set))
 
 (defpackage #:gloss.shader
   (:use #:cl
         #:alexandria
-        #:gloss.util))
-
-(defpackage+-1:defpackage+ #:gloss
-  (:use #:cl
-        #:alexandria
-        #:gloss.util)
-  (:inherit #:gloss.vao
-            #:gloss.shader))
+        #:gloss.common))

@@ -1,4 +1,4 @@
-(in-package :gloss.util)
+(in-package :gloss.common)
 
 (define-condition gloss-error (error)
   ((message :reader gloss-error-message

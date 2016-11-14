@@ -15,7 +15,7 @@
   (divisor 0)
   (accessors nil))
 
-(defun %analyze-attribute-locations (spec)
+(defun %analyze-spec (spec)
   (flet ((has-location-p (attr)
            (member :location attr))
          (location-integerp (attr)
@@ -23,10 +23,8 @@
          (location-minusp (attr)
            (minusp (getf (cdr attr) :location)))
          (bail (analysis kind context)
-           (return-from %analyze-attribute-locations
-             (values analysis kind context)))
-         (select-if (filter lst)
-           (mapcar #'identity (remove-if (complement filter) lst))))
+           (return-from %analyze-spec
+             (values analysis kind context))))
     ;; Check for duplicate attribute names
     (let ((duplicate-attrs))
       (loop :with count = (make-hash-table)
@@ -72,7 +70,7 @@
 (defun make-attribute-set (&rest spec)
   (let ((attribute-set (%make-attribute-set :spec (copy-seq spec))))
     (multiple-value-bind (analysis kind context)
-        (%analyze-attribute-locations spec)
+        (%analyze-spec spec)
       (ecase analysis
         ((:undefined :defined)
          (loop :with attributes = (attributes attribute-set)
