@@ -14,7 +14,7 @@
 ;; This requires an OpenGL context when called.
 (defun make-vao (layout-set)
   (apply #'make-instance 'vao
-         :vao-index (gl:gen-vertex-arrays)
+         :vao-index (car (gl:gen-vertex-arrays 1))
          :vao-layout-set layout-set))
 
 (defun vao-bind (vao)

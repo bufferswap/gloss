@@ -6,7 +6,8 @@
   :license "MIT"
   :description "A system aiming to simplify usage of the modern OpenGL interface."
   :depends-on (#:defpackage-plus
-               #:alexandria)
+	       #:alexandria
+	       #:cl-opengl)
   :pathname "src"
   :serial t
   :components ((:file "package")
