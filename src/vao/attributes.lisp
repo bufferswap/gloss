@@ -36,30 +36,26 @@
               :do (setf (gethash name count) 1))
       (when duplicate-attrs
         (bail :error
-              'attribute-name-duplicated
-              (list (select-if (lambda (attr)
-                                 (member (first attr) duplicate-attrs))
-                               spec)))))
+              :attribute-name-duplicated
+              (select-if (lambda (attr)
+                           (member (first attr) duplicate-attrs))
+                         spec))))
     ;; Check attribute locations
     (unless (some #'has-location-p spec)
-      (bail :undefined
-            'attribute-locations-undefined
-            (list spec)))
+      (bail :undefined :attribute-locations-undefined spec))
     (when (/= (length spec) (count-if #'has-location-p spec))
       (bail :error
-            'attribute-location-partially-defined
-            (list (select-if (complement #'has-location-p) spec))))
+            :attribute-location-partially-defined
+            (select-if (complement #'has-location-p) spec)))
     (unless (every #'location-integerp spec)
       (bail :error
-            'attribute-location-type-error
-            (list (select-if (complement #'location-integerp) spec))))
+            :attribute-location-type-error
+            (select-if (complement #'location-integerp) spec)))
     (when (some #'location-minusp spec)
       (bail :error
-            'attribute-location-range-error
-            (list (select-if #'location-minusp spec))))
-    (values :defined
-            'attribute-locations-defined
-            (list spec))))
+            :attribute-location-range-error
+            (select-if #'location-minusp spec)))
+    (values :defined :attribute-locations-defined spec)))
 
 (defun %assign-attribute-locations (attribute-set)
   (loop :for (name . properties) :in (spec attribute-set)
