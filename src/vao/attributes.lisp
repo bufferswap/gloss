@@ -22,9 +22,9 @@
            (integerp (getf (cdr attr) :location)))
          (location-minusp (attr)
            (minusp (getf (cdr attr) :location)))
-         (bail (analysis kind context)
+         (bail (analysis kind value)
            (return-from %analyze-spec
-             (values analysis kind context))))
+             (values analysis kind value))))
     ;; Check for duplicate attribute names
     (let ((duplicate-attrs))
       (loop :with count = (make-hash-table)
@@ -65,18 +65,18 @@
 
 (defun make-attribute-set (&rest spec)
   (let ((attribute-set (%make-attribute-set :spec (copy-seq spec))))
-    (multiple-value-bind (analysis kind context)
+    (multiple-value-bind (result kind value)
         (%analyze-spec spec)
-      (ecase analysis
+      (ecase result
         ((:undefined :defined)
          (loop :with attributes = (attributes attribute-set)
                :for (name . properties) :in spec
                :for attr = (apply #'%make-attribute :name name properties)
                :do (setf (gethash name attributes) attr))
-         (when (eq analysis :undefined)
+         (when (eq result :undefined)
            (%assign-attribute-locations attribute-set)))
         (:error
-         (gloss-error kind context))))
+         (gloss-error kind value))))
     attribute-set))
 
 ;;; Usage

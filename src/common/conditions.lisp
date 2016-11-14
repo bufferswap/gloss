@@ -1,14 +1,14 @@
 (in-package :gloss.common)
 
 (define-condition gloss-error (error)
-  ((message :reader gloss-error-message
+  ((kind :reader gloss-error-kind
+         :initarg :kind
+         :initform :unknown-kind)
+   (message :reader gloss-error-message
             :initarg :message)
    (value :reader gloss-error-value
           :initarg :value
-          :initform nil)
-   (kind :reader gloss-error-kind
-         :initarg :kind
-         :initform :unknown-kind)))
+          :initform nil)))
 
 (defmethod print-object ((object gloss-error) stream)
   (print-unreadable-object (object stream :type t)
@@ -24,6 +24,6 @@
 
 (defun gloss-error (kind &rest value)
   (error 'gloss-error
+         :kind kind
          :message (gloss-message kind)
-         :value (copy-seq value)
-         :kind kind))
+         :value (copy-seq value)))
