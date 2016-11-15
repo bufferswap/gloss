@@ -13,7 +13,7 @@
   primitive
   (layouts (make-hash-table))
   attribute-set
-  (attribute-view (make-hash-table))
+  (attribute-view (make-hash-table :test #'equal))
   (attribute-usage (make-hash-table)))
 
 (defstruct (layout (:constructor %make-layout)
@@ -30,25 +30,29 @@
    :properties (make-datastore-properties properties)
    :template template))
 
-;; TODO name this function better
 (defun count-attribute-usage (attribute-name layout-set)
   (with-slots (attribute-usage) layout-set
-    (if (nth-value 1 (gethash attribute-name attribute-usage))
-        (incf (gethash attribute-name attribute-usage))
-        (setf (gethash attribute-name attribute-usage) 1))))
+    (symbol-macrolet ((name-ref (gethash attribute-name attribute-usage)))
+      (if (nth-value 1 name-ref)
+	  (incf name-ref)
+	  (setf name-ref 1)))))
 
-;; TODO name this function better
-(defun add-template-names (layout-set layout-name template)
+(defun add-datastore-template (layout-set datastore-name datastore-template)
   (with-slots (attribute-set attribute-view) layout-set
-    (loop :for attr-name :in template
-          :for name = (list layout-name attr-name)
+    (loop :for attr-name :in datastore-template
+          :for formal-name = (list datastore-name attr-name)
           :do (unless (gethash attr-name (attributes attribute-set))
                 (gloss-error :attribute-undefined attr-name))
-              (setf (gethash name attribute-view) layout-name)
+              (setf (gethash formal-name attribute-view) datastore-name)
               (count-attribute-usage attr-name layout-set))))
 
-;; TODO name this function better
-(defun add-attribute-view-short-names (layout-set)
+(defun add-named-datastore-layout (layout-set datastore-name
+				   datastore-properties datastore-template)
+  (setf (gethash datastore-name (layouts layout-set))
+	(make-layout datastore-properties datastore-template))
+  (add-datastore-template layout-set datastore-name datastore-template))
+
+(defun generate-valid-attribute-short-names (layout-set)
   (with-slots (attribute-view attribute-usage) layout-set
     (let* ((all-keys (hash-table-keys attribute-view)))
       (maphash
@@ -61,12 +65,12 @@
 (defun make-layout-set (attribute-set primitive &rest datastore-specs)
   (let ((layout-set (%make-layout-set :attribute-set attribute-set
                                       :primitive primitive)))
-    (loop :for (properties . named-layouts) :in datastore-specs
-          :do (loop :for (layout-name template) :in named-layouts
-                    :do (setf (gethash layout-name (layouts layout-set))
-                              (make-layout properties template))
-                        (add-template-names layout-set layout-name template)))
-    (add-attribute-view-short-names layout-set)
+    (loop :for (datastore-properties . named-layouts) :in datastore-specs
+          :do (loop :for (datastore-name datastore-template) :in named-layouts
+		    :do (add-named-datastore-layout
+		         layout-set datastore-name
+			 datastore-properties datastore-template)))
+    (generate-valid-attribute-short-names layout-set)
     layout-set))
 
 (defun doit ()
