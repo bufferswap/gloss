@@ -23,3 +23,6 @@ These attributes have negative :LOCATION values:~%~(~{  ~S~%~}~)")
 (defmethod gloss-message ((kind (eql :attribute-locations-defined)))
   "All attributes in this set use :LOCATION properly.
 These attributes use :LOCATION properly: ~(~{  ~S~%~}~)")
+
+(defmethod gloss-message ((kind (eql :attribute-undefined)))
+  "Attribute is not defined: ~S")

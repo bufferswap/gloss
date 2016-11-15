@@ -8,114 +8,81 @@
   (binding-target :array-buffer)
   (usage-hint :static-draw))
 
-(defstruct (datastore-layout-set (:constructor %make-datastore-layout-set)
-                                 (:conc-name nil))
-  attr-set
-  primitive-kind
-  (datastore-layouts (make-hash-table))
-  (attribute-view (make-hash-table)))
+(defstruct (layout-set (:constructor %make-layout-set)
+                       (:conc-name nil))
+  primitive
+  (layouts (make-hash-table))
+  attribute-set
+  (attribute-view (make-hash-table))
+  (attribute-usage (make-hash-table)))
 
-(defstruct (datastore-layout (:constructor %make-datastore-layout)
-                             (:conc-name nil))
+(defstruct (layout (:constructor %make-layout)
+                   (:conc-name nil))
   properties
   template)
 
-;; This does little error checking, it shoud do more.
-(defun make-layout-set (attr-set primitive-kind &rest datastore-specs)
-  (let (;; The hash table holding the datastore layout information
-        (hash/name->layout (make-hash-table :test #'eq))
-        ;; The hasn table holding the attribute-view
-        (hash/attr-view (make-hash-table :test #'equal))
-        ;; We keep track of how many times we used each attribute in all
-        ;; datastore-specs
-        (hash/attr-num-use (make-hash-table :test #'eq)))
+(defun make-datastore-properties (properties)
+  (apply #'%make-datastore-properties
+         (reduce #'append properties :initial-value nil)))
 
-    ;; Loop over each datastore-specification
-    (loop :for (properties . named-layouts) :in datastore-specs :do
-       ;; For each name-layout, we'll add an entry to a hash table.
-       (loop :for (name template) :in named-layouts :do
-          ;; insert an entry.
-          (setf (gethash name hash/name->layout)
-                (%make-datastore-layout
-                 :properties
-                 ;; We denormalize the single properties information into
-                 ;; individual copies of the inforamtion for each datastore
-                 ;; description.
-                 (apply #'%make-datastore-properties
-                        (reduce #'append properties :initial-value NIL))
-                 :template template))
+(defun make-layout (properties template)
+  (%make-layout
+   :properties (make-datastore-properties properties)
+   :template template))
 
-          ;; Walk the template and add a formal name to the attr-view
-          (loop :for attr-name :in template :do
-             (let ((formal-name (list name attr-name)))
-               ;; validate that it is in the pased in attr-set
-               (unless (gethash attr-name (attributes attr-set))
-                 (error "make-layout-set: attr-name ~A in not in the attr-set."
-                        attr-name))
+;; TODO name this function better
+(defun count-attribute-usage (attribute-name layout-set)
+  (with-slots (attribute-usage) layout-set
+    (if (nth-value 1 (gethash attribute-name attribute-usage))
+        (incf (gethash attribute-name attribute-usage))
+        (setf (gethash attribute-name attribute-usage) 1))))
 
-               ;; assign the formal name to the datastore name
-               (setf (gethash formal-name hash/attr-view) name)
+;; TODO name this function better
+(defun add-template-names (layout-set layout-name template)
+  (with-slots (attribute-set attribute-view) layout-set
+    (loop :for attr-name :in template
+          :for name = (list layout-name attr-name)
+          :do (unless (gethash attr-name (attributes attribute-set))
+                (gloss-error :attribute-undefined attr-name))
+              (setf (gethash name attribute-view) layout-name)
+              (count-attribute-usage attr-name layout-set))))
 
-               ;; Count the uses of this attribute name
-               (if (null (nth-value 1 (gethash attr-name hash/attr-num-use)))
-                   ;; we see it the first time.
-                   (setf (gethash attr-name hash/attr-num-use) 1)
-                   ;; otherwise, increment that we saw another use of it.
-                   (incf (gethash attr-name hash/attr-num-use)))))))
-
-    ;; Now, for all entries in the hash/attr-num-use that are 1, those
-    ;; are unique and can get a short name which can be used in the
-    ;; incoming data DSL. There may be an more condenses why to do this if
-    ;; I thought more, but meh, this is n^2, but that's ok, since the n's are
-    ;; generally small.
-    (let ((all-keys
-           (loop :for k :being :the :hash-keys :in hash/attr-view
-              :collecting k)))
+;; TODO name this function better
+(defun add-attribute-view-short-names (layout-set)
+  (with-slots (attribute-view attribute-usage) layout-set
+    (let* ((all-keys (hash-table-keys attribute-view)))
       (maphash
        (lambda (attr-name use-count)
          (when (= use-count 1)
-           ;; Find the formal-name in the hash/name->layout hash table which
-           ;; uses this attribute name, there will be only one. Then, get the
-           ;; datastore name out and assign the association in the
-           ;; hash/attr-view for the short name.
-           (let ((datastore-name (car (find attr-name all-keys :key #'cadr))))
-             ;; This is safe to do here because I am not adding new keys
-             ;; to the hashtable over which I am iterating.
-             (setf (gethash attr-name hash/attr-view) datastore-name))))
-       hash/attr-num-use))
+           (setf (gethash attr-name attribute-view)
+                 (car (find attr-name all-keys :key #'cadr)))))
+       attribute-usage))))
 
-
-    ;; all done, package everything up and return it!
-    (%make-datastore-layout-set
-     :attr-set attr-set
-     :primitive-kind primitive-kind
-     :datastore-layouts hash/name->layout
-     :attribute-view hash/attr-view)))
-
-
-
+(defun make-layout-set (attribute-set primitive &rest datastore-specs)
+  (let ((layout-set (%make-layout-set :attribute-set attribute-set
+                                      :primitive primitive)))
+    (loop :for (properties . named-layouts) :in datastore-specs
+          :do (loop :for (layout-name template) :in named-layouts
+                    :do (setf (gethash layout-name (layouts layout-set))
+                              (make-layout properties template))
+                        (add-template-names layout-set layout-name template)))
+    (add-attribute-view-short-names layout-set)
+    layout-set))
 
 (defun doit ()
-  (let ((attr-set (make-attribute-set '(position :type :float :count 3)
-                                      '(normal :type :float :count 3)
-                                      '(uv :type :float :count 3)
-                                      '(color :type :float :count 3)
-                                      '(weight :type :float :count 3))))
-
-    (make-layout-set attr-set :triangles
-                     '(((:data-format :interleave)
-                        (:binding-target :array-buffer)
-                        (:usage-hint :static-draw))
-
-                       (vertices (position normal uv)))
-
-                     '(((:data-format :separate)
-                        (:binding-target :array-buffer)
-                        (:usage-hint :static-draw))
-
-                       (colors (color))
-                       (weights (weight)))
-                     )))
-
-
-;; (inspect (doit))
+  (let ((attr-set (make-attribute-set '(position :count 3)
+                                      '(normal :count 3)
+                                      '(uv :count 3)
+                                      '(color :count 3)
+                                      '(weight :count 3))))
+    (make-layout-set
+     attr-set :triangles
+     '(((:data-format :interleave)
+        (:binding-target :array-buffer)
+        (:usage-hint :static-draw))
+       (vertices (position normal uv)))
+     '(((:data-format :separate)
+        (:binding-target :array-buffer)
+        (:usage-hint :static-draw))
+       (colors (color))
+       (weights (weight))))))

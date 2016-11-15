@@ -78,11 +78,3 @@
         (:error
          (gloss-error kind value))))
     attribute-set))
-
-;;; Usage
-
-#++(let ((attr-set (make-attribute-set
-                    '(position :type :float :count 3 :accessors (px py pz))
-                    '(normals :type :float :count 3 :accessors (nx ny nz))
-                    '(uvs :type :float :count 3 :accessors (uvx uvy uvz)))))
-     attr-set)
