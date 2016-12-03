@@ -8,6 +8,11 @@
   (binding-target :array-buffer)
   (usage-hint :static-draw))
 
+(defstruct (layout (:constructor %make-layout)
+                   (:conc-name nil))
+  properties
+  template)
+
 (defstruct (layout-set (:constructor %make-layout-set)
                        (:conc-name nil))
   primitive
@@ -15,11 +20,6 @@
   attribute-set
   (attribute-view (make-hash-table :test #'equal))
   (attribute-usage (make-hash-table)))
-
-(defstruct (layout (:constructor %make-layout)
-                   (:conc-name nil))
-  properties
-  template)
 
 (defun make-datastore-properties (properties)
   (apply #'%make-datastore-properties

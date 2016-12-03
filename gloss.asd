@@ -20,6 +20,7 @@
                  (:file "attributes")
                  (:file "layout")
                  (:file "vao")
+		 (:file "datastore")
                  (:file "test")))
                (:module "shader"
                 :components
