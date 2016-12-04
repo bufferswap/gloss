@@ -16,7 +16,7 @@
   (accessors nil)
   (component-offsets nil))
 
-(defun %attribute-type-size (attribute)
+(defun attribute-type-size (attribute)
   (ecase (attr-type attribute)
     ((:byte :unsigned-byte) 1)
     ((:short :unsigned-short :half-float) 2)
@@ -24,12 +24,12 @@
 
 (defun make-attribute (name properties)
   (let* ((attr (apply #'%make-attribute :name name properties))
-         (type-size (%attribute-type-size attr)))
+         (type-size (attribute-type-size attr)))
     (with-slots (count component-offsets) attr
       (setf component-offsets (iota count :step type-size)))
     attr))
 
-(defun %analyze-spec (spec)
+(defun analyze-spec (spec)
   (flet ((has-location-p (attr)
            (member :location attr))
          (location-integerp (attr)
@@ -37,7 +37,7 @@
          (location-minusp (attr)
            (minusp (getf (cdr attr) :location)))
          (bail (analysis kind value)
-           (return-from %analyze-spec
+           (return-from analyze-spec
              (values analysis kind value))))
     ;; Check for duplicate attribute names
     (let ((duplicate-attrs))
@@ -71,7 +71,7 @@
             (select-if #'location-minusp spec)))
     (values :defined :attribute-locations-defined spec)))
 
-(defun %assign-attribute-locations (attribute-set)
+(defun assign-attribute-locations (attribute-set)
   (loop :for (name . properties) :in (spec attribute-set)
         :for attr = (gethash name (attributes attribute-set))
         :for location :from 0
@@ -80,7 +80,7 @@
 (defun make-attribute-set (&rest spec)
   (let ((attribute-set (%make-attribute-set :spec (copy-seq spec))))
     (multiple-value-bind (result kind value)
-        (%analyze-spec spec)
+        (analyze-spec spec)
       (ecase result
         ((:undefined :defined)
          (loop :with attributes = (attributes attribute-set)
@@ -88,7 +88,7 @@
                :for attr = (make-attribute name properties)
                :do (setf (gethash name attributes) attr))
          (when (eq result :undefined)
-           (%assign-attribute-locations attribute-set)))
+           (assign-attribute-locations attribute-set)))
         (:error
          (gloss-error kind value))))
     attribute-set))
