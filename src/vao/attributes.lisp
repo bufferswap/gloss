@@ -13,7 +13,21 @@
   (count 1)
   (normalizep nil)
   (divisor 0)
-  (accessors nil))
+  (accessors nil)
+  (component-offsets nil))
+
+(defun %attribute-type-size (attribute)
+  (ecase (attr-type attribute)
+    ((:byte :unsigned-byte) 1)
+    ((:short :unsigned-short :half-float) 2)
+    ((:int :unsigned-int :float) 4)))
+
+(defun make-attribute (name properties)
+  (let* ((attr (apply #'%make-attribute :name name properties))
+         (type-size (%attribute-type-size attr)))
+    (with-slots (count component-offsets) attr
+      (setf component-offsets (iota count :step type-size)))
+    attr))
 
 (defun %analyze-spec (spec)
   (flet ((has-location-p (attr)
@@ -71,7 +85,7 @@
         ((:undefined :defined)
          (loop :with attributes = (attributes attribute-set)
                :for (name . properties) :in spec
-               :for attr = (apply #'%make-attribute :name name properties)
+               :for attr = (make-attribute name properties)
                :do (setf (gethash name attributes) attr))
          (when (eq result :undefined)
            (%assign-attribute-locations attribute-set)))
