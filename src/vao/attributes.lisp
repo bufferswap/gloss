@@ -2,7 +2,7 @@
 
 (defstruct (attribute-set (:constructor %make-attribute-set)
                           (:conc-name nil))
-  spec
+  (spec nil)
   (attributes (make-hash-table)))
 
 (defstruct (attribute (:constructor %make-attribute)
@@ -17,12 +17,18 @@
   (component-offsets nil))
 
 (defun attribute-type-size (attribute)
+  "The size in bytes of an attribute's type."
   (ecase (attr-type attribute)
     ((:byte :unsigned-byte) 1)
     ((:short :unsigned-short :half-float) 2)
     ((:int :unsigned-int :float) 4)))
 
+(defun attribute-size (attribute)
+  "The size in bytes of an attribute when stored in a datastore."
+  (* (attr-count attribute) (attribute-type-size attribute)))
+
 (defun make-attribute (name properties)
+  "Create an attribute object of the specified name and properties."
   (let* ((attr (apply #'%make-attribute :name name properties))
          (type-size (attribute-type-size attr)))
     (with-slots (count component-offsets) attr
@@ -30,6 +36,8 @@
     attr))
 
 (defun analyze-spec (spec)
+  "Analyze the attributes specification for problems and return the findings, in order to be later
+handled appropriately."
   (flet ((has-location-p (attr)
            (member :location attr))
          (location-integerp (attr)
@@ -51,9 +59,7 @@
       (when duplicate-attrs
         (bail :error
               :attribute-name-duplicated
-              (select-if (lambda (attr)
-                           (member (first attr) duplicate-attrs))
-                         spec))))
+              (select-if (lambda (attr) (member (first attr) duplicate-attrs)) spec))))
     ;; Check attribute locations
     (unless (some #'has-location-p spec)
       (bail :undefined :attribute-locations-undefined spec))
@@ -72,6 +78,9 @@
     (values :defined :attribute-locations-defined spec)))
 
 (defun assign-attribute-locations (attribute-set)
+  "Serially assign attribute locations to each attribute.
+This is performed only if the attribute specification analysis detects that all attributes have no
+location defined."
   (loop :for (name . properties) :in (spec attribute-set)
         :for attr = (gethash name (attributes attribute-set))
         :for location :from 0
