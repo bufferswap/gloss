@@ -3,7 +3,9 @@
 ;; In a datastore, we record, for each attribute participating,
 ;; information about how that attribute is exactly layed out into the
 ;; datastore, how many entries of that attribute there are, etc, etc, etc.
-(defstruct attribute-byte-layout
+(defstruct attribute-descriptor
+  ;; Is this attribute aligned in the datastore?
+  alignedp
   ;; How long is the raw representation of the attribute entry (including all
   ;; of its components) in bytes?
   raw-byte-length
@@ -35,7 +37,7 @@
                  :initform NIL
                  :accessor native-data)
    ;; A hash table keyed by attribute shortname and whose value is
-   ;; an attribute-byte-layout structure.
+   ;; an attribute-descriptor structure.
    (%attr-layout :initarg :attr-layout
                  :initform (make-hash-table)
                  :accessor attr-layout)))
