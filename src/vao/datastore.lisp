@@ -5,7 +5,7 @@
 ;; datastore, how many entries of that attribute there are, etc, etc, etc.
 (defstruct attribute-descriptor
   ;; Is this attribute aligned in the datastore?
-  alignedp
+  force-alignedp
   ;; How long is the raw representation of the attribute entry (including all
   ;; of its components) in bytes?
   raw-byte-length
