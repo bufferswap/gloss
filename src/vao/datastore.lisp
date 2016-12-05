@@ -4,17 +4,15 @@
 ;; information about how that attribute is exactly layed out into the
 ;; datastore, how many entries of that attribute there are, etc, etc, etc.
 (defstruct attribute-byte-layout
-  ;; How long is the raw representation of the attribute.
+  ;; How long is the raw representation of the attribute entry (including all
+  ;; of its components) in bytes?
   raw-byte-length
-  ;; To what number should we align the attribute?
-  alignment
-  ;; If we align the attribute, how many bytes is it including the
-  ;; wasted alignment bytes?
+  ;; What is the byte length of the fully alignable attribute?
   aligned-byte-length
-  ;; In the datastore, what is the byte offset of the first attribute in the
-  ;; byte store?
+  ;; In the datastore, what is the byte offset to the first attribute in the
+  ;; native data array?
   offset
-  ;; What is the stride to the next chunk of this attributes data?
+  ;; What is the stride to the next attribute entry?
   stride
   ;; How many valid entries have we stored in the data store?
   num-valid-attributes
@@ -22,11 +20,35 @@
   ;; the byte index at which we need to write it?
   byte-write-index)
 
-(defstruct datastore-buffer
-  ;; The actual static-vector storage for the attribute data.
-  native-data
-  ;; What fundamental native type is this array?
-  native-type
-  ;; A hash table of attributes keyed by attribute shortname
-  ;; whose value is an attribute-info structure.
-  attr-layout)
+;; A datastore is responsible for ONE native array of attribute data.
+;; We define a base class and later refine it to make it easier to
+;; break apart how to deal with alignment of the attributes into the native
+;; array.
+(defclass datastore ()
+  ;; To what should we align the start of each attribute?
+  ;; This is the same for all attributes.
+  ((%alignment :initarg :alignment
+               :initform 1
+               :accessor alignment)
+   ;; The actual static-vector storage for the attribute data.
+   (%native-data :initarg :native-data
+                 :initform NIL
+                 :accessor native-data)
+   ;; A hash table keyed by attribute shortname and whose value is
+   ;; an attribute-byte-layout structure.
+   (%attr-layout :initarg :attr-layout
+                 :initform (make-hash-table)
+                 :accessor attr-layout)))
+
+
+
+;; These represent the element size of the underlying native-data
+;; array. When we make a datastore, we pick the best one to in
+;; relation to the component data types in all attributes being stored
+;; in the datastore or based upon alignment requirements.
+(defclass datastore-unsigned-byte (datastore) ())
+(defclass datastore-unsigned-short (datastore) ())
+(defclass datastore-unsigned-int (datastore) ())
+
+(defun make-datastore ()
+  nil)
