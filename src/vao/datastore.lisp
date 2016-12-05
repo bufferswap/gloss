@@ -50,5 +50,6 @@
 (defclass datastore-unsigned-short (datastore) ())
 (defclass datastore-unsigned-int (datastore) ())
 
-(defun make-datastore ()
+(defun make-datastore (datastore-name layout-set)
+  ;; TODO: Implement me.
   nil)
