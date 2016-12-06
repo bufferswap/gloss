@@ -4,8 +4,6 @@
 ;; information about how that attribute is exactly layed out into the
 ;; datastore, how many entries of that attribute there are, etc, etc, etc.
 (defstruct attribute-descriptor
-  ;; Is this attribute aligned in the datastore?
-  force-alignedp
   ;; How long is the raw representation of the attribute entry (including all
   ;; of its components) in bytes?
   raw-byte-length
@@ -23,35 +21,35 @@
   byte-write-index)
 
 ;; A datastore is responsible for ONE native array of attribute data.
-;; We define a base class and later refine it to make it easier to
-;; break apart how to deal with alignment of the attributes into the native
-;; array.
 (defclass datastore ()
   ;; To what should we align the start of each attribute?
-  ;; This is the same for all attributes.
-  ((%alignment :initarg :alignment
+  ;; This is the same for all attributes in the datastore.
+  ((%force-alignment-p :initarg :force-alignment-p
+                       :initform T
+                       :accessor force-alignment-p)
+   ;; What is the attribute alignment number?
+   (%alignment :initarg :alignment
                :initform 1
                :accessor alignment)
    ;; The actual static-vector storage for the attribute data.
    (%native-data :initarg :native-data
                  :initform NIL
                  :accessor native-data)
+   ;; The raw type of the static-vector. We sometimes need to know this before
+   ;; having an actual native-data array.
+   (%native-type :initarg :native-type
+                 :initform NIL
+                 :accessor native-type)
    ;; A hash table keyed by attribute shortname and whose value is
    ;; an attribute-descriptor structure.
-   (%attr-layout :initarg :attr-layout
+   (%descriptors :initarg :descriptors
                  :initform (make-hash-table)
-                 :accessor attr-layout)))
+                 :accessor descriptors)))
 
-
-
-;; These represent the element size of the underlying native-data
-;; array. When we make a datastore, we pick the best one to in
-;; relation to the component data types in all attributes being stored
-;; in the datastore or based upon alignment requirements.
-(defclass datastore-unsigned-byte (datastore) ())
-(defclass datastore-unsigned-short (datastore) ())
-(defclass datastore-unsigned-int (datastore) ())
-
-(defun make-datastore (datastore-name layout-set)
-  ;; TODO: Implement me.
+(defun make-datastore (datastore-name layout-set &key (force-align-p T))
+  ;; 1. Lookup datastore in layout-set.
+  ;; 2. Looking at the component types of all of the attributes:
+  ;; 2a. Determine the best native-type that leads to the least memory copying.
+  ;; 2b. Compute and store appropriate alignment-descriptors.
+  ;; 3. TODO
   nil)
