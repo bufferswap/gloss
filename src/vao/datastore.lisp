@@ -53,3 +53,26 @@
   ;; 2b. Compute and store appropriate alignment-descriptors.
   ;; 3. TODO
   nil)
+
+
+(defun attr/gl-float->static-vector/unsigned-byte
+    (out-svec write-byte-index in-vec read-element-index)
+  "Read a complete attribute whose component type is intended to be
+the GL type :float from (the CL vector/array) in-vec at
+read-element-index (one index per component) then convert each
+component to a byte representation and write it into the static-vector
+out-svec at the write-byte-index location.  Return the values of
+out-svec and the number of bytes written."
+
+  (values out-svec 0))
+
+(defun attr/gl-float->static-vector/unsigned-int
+    (out-svec write-byte-index in-vec read-element-index)
+  "Read a complete attribute whose component type is intended to be
+the GL type :float from (the CL vector/array) in-vec at
+read-element-index (one index per component) then convert each
+component to a byte representation and write it into the static-vector
+out-svec at the write-byte-index location.  Return the values of
+out-svec and the number of bytes written."
+
+  (values out-svec 0))
