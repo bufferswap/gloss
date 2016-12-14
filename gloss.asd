@@ -6,6 +6,8 @@
   :license "MIT"
   :description "A system aiming to simplify usage of the modern OpenGL interface."
   :depends-on (#:alexandria
+               #:ieee-floats
+               #:static-vectors
                #:cl-opengl)
   :pathname "src"
   :serial t
