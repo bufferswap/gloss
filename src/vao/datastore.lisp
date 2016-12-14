@@ -210,7 +210,7 @@ out-svec and the number of bytes written."
   "Test attr/gl-float->static-vector/unsigned-byte"
   (let* ((out-vec-len 32)
          (out-vec (allocate-gl-typed-static-vector out-vec-len :unsigned-byte))
-         (write-byte-index 1)
+         (write-byte-index 0)
          (in-vec (vector 100 455/222 54.6798))
          (read-element-index 0)
          (num-read-elems (length in-vec)))
