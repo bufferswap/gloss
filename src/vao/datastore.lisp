@@ -229,7 +229,6 @@ out-svec and the number of bytes written."
 			       (gl-type->cl-type :byte)))
 
 
-     ;; cut it into bytes and store it into the out-vec
      :do
      ;; we're writing into an unsigned-byte static vector, so we
      ;; don't need to worry about writing alignment.
