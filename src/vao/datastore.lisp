@@ -165,8 +165,11 @@
     (:half-float '(integer 0 65535)) ;; half float in 16 bits of space.
     (:double 'double-float)))
 
+(defun allocate-gl-typed-static-vector (len gl-type)
+  (static-vectors:make-static-vector
+   len :element-type (gl-type->cl-type gl-type)))
 
-(defun float->static-vector/unsigned-byte
+(defun float-vec->static-vector/unsigned-byte
     (out-svec write-byte-index in-vec read-element-index num-read-elems)
   "Read a complete attribute whose component type is intended to be
 the GL type :float from (the CL vector/array) in-vec at
@@ -187,7 +190,7 @@ out-svec and the number of bytes written."
      :below (+ read-element-index num-read-elems)
 
      ;; get the value we need, always convert.
-     :for value = (coerce (aref in-vec read-index) 'single-float)
+     :for value = (coerce (aref in-vec read-index) (gl-type->cl-type :float))
      ;; convert it to an unsigned int representation.
      :for ieee-uint = (ieee-floats::encode-float32 value)
 
@@ -202,9 +205,39 @@ out-svec and the number of bytes written."
 
   (values out-svec (* 4 num-read-elems)))
 
-(defun allocate-gl-typed-static-vector (len gl-type)
-  (static-vectors:make-static-vector
-   len :element-type (gl-type->cl-type gl-type)))
+(defun byte-vec->static-vector/unsigned-byte
+    (out-svec write-byte-index in-vec read-element-index num-read-elems)
+  "Read a complete attribute whose component type is intended to be
+the GL type :byte from (the CL vector/array) in-vec at
+read-element-index (one index per component) then convert each
+component to a byte representation and write it into the static-vector
+out-svec at the write-byte-index location.  Return the values of
+out-svec and the number of bytes written."
+
+  (loop
+     ;; how many bytes we totally write
+     :with write-count = 0
+
+     ;; iterate over each in-vec element in the right slice of the array.
+     :for read-index
+     :from read-element-index
+     :below (+ read-element-index num-read-elems)
+
+     ;; get the value we need, always convert.
+     :for value = (ldb (byte 8 0)
+		       (coerce (aref in-vec read-index)
+			       (gl-type->cl-type :byte)))
+
+
+     ;; cut it into bytes and store it into the out-vec
+     :do
+     ;; we're writing into an unsigned-byte static vector, so we
+     ;; don't need to worry about writing alignment.
+     (setf (aref out-svec (+ write-byte-index write-count)) value)
+     (incf write-count))
+
+  (values out-svec (* 1 num-read-elems)))
+
 
 (defun test-0 ()
   "Test attr/gl-float->static-vector/unsigned-byte"
@@ -220,7 +253,7 @@ out-svec and the number of bytes written."
        (setf (aref out-vec idx) 0))
 
     ;; rip out the floats and store in the out-vec.
-    (float->static-vector/unsigned-byte
+    (float-vec->static-vector/unsigned-byte
      out-vec write-byte-index in-vec read-element-index num-read-elems)
 
     (format t "Stored:~%in-vec = ~A~%out-vec= into ~A~%at byte index ~A~%"
@@ -228,14 +261,24 @@ out-svec and the number of bytes written."
 
     (static-vectors:free-static-vector out-vec)))
 
+(defun test-1 ()
+  "Test attr/gl-float->static-vector/unsigned-byte"
+  (let* ((out-vec-len 32)
+         (out-vec (allocate-gl-typed-static-vector out-vec-len :unsigned-byte))
+         (write-byte-index 0)
+         (in-vec (vector -2 -1 0 1 2))
+         (read-element-index 0)
+         (num-read-elems (length in-vec)))
 
-(defun float->static-vector/unsigned-int
-    (out-svec write-byte-index in-vec read-element-index num-read-elems)
-  "Read a complete attribute whose component type is intended to be
-the GL type :float from (the CL vector/array) in-vec at
-read-element-index (one index per component) then convert each
-component to a byte representation and write it into the static-vector
-out-svec at the write-byte-index location.  Return the values of
-out-svec and the number of bytes written."
+    ;; clear out-vec...
+    (loop :for idx :below out-vec-len :do
+       (setf (aref out-vec idx) 0))
 
-  (values out-svec 0))
+    ;; rip out the floats and store in the out-vec.
+    (byte-vec->static-vector/unsigned-byte
+     out-vec write-byte-index in-vec read-element-index num-read-elems)
+
+    (format t "Stored:~%in-vec = ~A~%out-vec= into ~A~%at byte index ~A~%"
+            in-vec out-vec write-byte-index)
+
+    (static-vectors:free-static-vector out-vec)))
