@@ -63,7 +63,8 @@
     (:unsigned-short '(integer 0 65535))
     (:int '(integer -2147483648 2147483647))
     (:unsigned-int '(integer 0 4294967295))
-    (:fixed '(integer 0 65535)) ;; 16.16 fixed point integer in 32-bits of space
+    ;; This next one isn't completely correct, but it is functionally correct.
+    (:fixed '(integer 0 4294967295)) ;; 16.16 fixed point integer in 32-bits
     (:half-float '(integer 0 65535)) ;; half float in 16 bits of space.
     (:double 'double-float)))
 
@@ -76,7 +77,7 @@
     (:unsigned-short 2)
     (:int 4)
     (:unsigned-int 4)
-    (:fixed 2) ;; 16.16 fixed point integer in 32-bits of space
+    (:fixed 4) ;; 16.16 fixed point integer in 32-bits of space
     (:half-float 2) ;; half float in 16 bits of space.
     (:double 8)))
 
@@ -136,6 +137,7 @@ values of out-svec and the number of bytes written."
                  (:short 0 ,(vector -32768 -32767 -1 0 1 32766 32767) 0)
                  (:int 0 ,(vector -2147483648 -1 0 1 2147483647) 0)
                  (:unsigned-int 0 ,(vector 0 1 2 4294967295) 0)
+                 (:fixed 0 ,(vector #x00010000 #x00020000 #x00030000) 0)
                  (:float 0 ,(vector -2 -1.5 0 1.5 2.0) 0))))
 
     (flet ((clear (sv)
