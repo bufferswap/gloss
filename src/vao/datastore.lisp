@@ -1,5 +1,11 @@
 (in-package :gloss.vao)
 
+;;;; NOTE: The gl-type :fixed is not well supported in this
+;;;; library. In order to support it properly, conversion functions to
+;;;; and from 16.16 fixed point have to be created. There is a "fixed"
+;;;; CL library, but I don't know how to use it (cause I haven't
+;;;; looked).
+
 ;; To support gl-type :half-float
 (declaim (inline ieee-floats::encode-float16 ieee-floats::decode-float16))
 (ieee-floats::make-float-converters ieee-floats::encode-float16
