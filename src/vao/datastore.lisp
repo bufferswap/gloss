@@ -1,5 +1,11 @@
 (in-package :gloss.vao)
 
+;; To support gl-type :half-float
+(declaim (inline ieee-floats::encode-float16 ieee-floats::decode-float16))
+(ieee-floats::make-float-converters ieee-floats::encode-float16
+                                    ieee-floats::decode-float16
+                                    5 10 nil)
+
 ;; In a datastore, we record, for each attribute participating,
 ;; information about how that attribute is exactly layed out into the
 ;; datastore, how many entries of that attribute there are, etc, etc, etc.
@@ -65,7 +71,7 @@
     (:unsigned-int '(integer 0 4294967295))
     ;; This next one isn't completely correct, but it is functionally correct.
     (:fixed '(integer 0 4294967295)) ;; 16.16 fixed point integer in 32-bits
-    (:half-float '(integer 0 65535)) ;; half float in 16 bits of space.
+    (:half-float '(single-float -65504.0 65504.0)) ;; ieee 754-2008
     (:double 'double-float)))
 
 (defun gl-type->byte-size (gl-type)
@@ -98,9 +104,10 @@ values of out-svec and the number of bytes written."
 
     (loop
        ;; the function used to encode the value into whatever we need.
-       :with encoder = (cond
-                         ((eq gl-type :float) #'ieee-floats::encode-float32)
-                         (t #'identity))
+       :with encoder = (case gl-type
+                         (:float #'ieee-floats::encode-float32)
+                         (:half-float #'ieee-floats::encode-float16)
+                         (otherwise #'identity))
        ;; This is little endian.
        :with endian4 = (vector (byte 8 0) (byte 8 8) (byte 8 16) (byte 8 24))
        ;; how many bytes we totally write
@@ -138,6 +145,7 @@ values of out-svec and the number of bytes written."
                  (:int 0 ,(vector -2147483648 -1 0 1 2147483647) 0)
                  (:unsigned-int 0 ,(vector 0 1 2 4294967295) 0)
                  (:fixed 0 ,(vector #x00010000 #x00020000 #x00030000) 0)
+                 (:half-float 0 ,(vector -65504.0 -2 1.5 0 1.5 2.0 65504.0) 0)
                  (:float 0 ,(vector -2 -1.5 0 1.5 2.0) 0))))
 
     (flet ((clear (sv)
