@@ -94,6 +94,20 @@
     (:double 8)))
 
 
+
+;; TODO: This needs to be broken up into individual functions per the
+;; n-bit-width, have hard coded constants added, and declaimed with
+;; THE's until it optimizes to a tiny function.
+(declaim (inline decode-uN->sN))
+(defun decode-uN->sN (val n-bit-width)
+  "Slowly decode a twos complement number encoded into the unsigned
+positive number VAL back into the signed common lisp infinite
+precision form of it."
+  (logior (* (ldb (byte 1 (1- n-bit-width)) val)
+	     (- (expt 2 n-bit-width)))
+	  val))
+
+
 (defun allocate-gl-typed-static-vector (len gl-type)
   (static-vectors:make-static-vector
    len :element-type (gl-type->cl-type gl-type)))
@@ -167,6 +181,9 @@ IN-SVEC."
        ;; stuff to decode the integers I made into real things.
        :with decoder = (case gl-type
                          (:float #'ieee-floats::decode-float32)
+			 (:byte (lambda (x) (decode-uN->sN x 8)))
+			 (:short (lambda (x) (decode-uN->sN x 16)))
+			 (:int (lambda (x) (decode-uN->sN x 32)))
                          (:half-float #'ieee-floats::decode-float16)
                          (otherwise #'identity))
 
