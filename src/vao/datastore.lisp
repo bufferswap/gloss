@@ -113,9 +113,6 @@ precision form of it."
    len :element-type (gl-type->cl-type gl-type)))
 
 
-;;;; TODO: These two functions must know about the alignment bytes too
-;;;; to be fully completed.
-
 (defun vec->sv/unsigned-byte
     (gl-type out-svec write-byte-index in-vec read-element-index num-read-elems)
   "Read a NUM-READ-ELEMS of data from IN-VEC at READ-ELEMENT-INDEX
