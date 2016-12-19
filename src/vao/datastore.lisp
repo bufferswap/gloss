@@ -98,12 +98,18 @@
   (static-vectors:make-static-vector
    len :element-type (gl-type->cl-type gl-type)))
 
+
+;;;; TODO: These two functions must know about the alignment bytes too
+;;;; to be fully completed.
+
 (defun vec->sv/unsigned-byte
     (gl-type out-svec write-byte-index in-vec read-element-index num-read-elems)
   "Read a NUM-READ-ELEMS of data from IN-VEC at READ-ELEMENT-INDEX
 that is intended to be GL-TYPE data and store in a native little
 endian unsigned-byte representation in OUT-VEC starting at
-WRITE-BYTE-INDEX."
+WRITE-BYTE-INDEX. The caller should guarantee that this will validly
+reference the arrays through all indicies. Return the values OUT-SVEC
+and the number of bytes written to OUT-SVEC."
   (let ((gl-type-byte-size (gl-type->byte-size gl-type)))
 
     (loop
@@ -145,9 +151,10 @@ WRITE-BYTE-INDEX."
 extract NUM-GL-ELEMS of type GL-TYPE. If keyword argument :OUT-VEC is
 a CL single dimensional array or vector, then write the extracted
 elements to there starting at :WRITE-ELEM-INDEX, which defaults to
-0. Otherwise allocate a new array of NUM-GL-ELEMS whose size will be
-(+ WRITE-ELEM-INDEX NUM-GL-ELEMS), fill the array with the data, and
-return that."
+0. Otherwise allocate a new array of NUM-GL-ELEMS whose size will
+be (+ WRITE-ELEM-INDEX NUM-GL-ELEMS), fill the array with the data,
+and return that. Return OUT-VEC and the number of bytes read from
+IN-SVEC."
 
   nil)
 
