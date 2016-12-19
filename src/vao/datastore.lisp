@@ -82,15 +82,15 @@
 
 (defun gl-type->byte-size (gl-type)
   (ecase gl-type
-    (:float 4)
-    (:byte 1)
     (:unsigned-byte 1)
-    (:short 2)
+    (:byte 1)
     (:unsigned-short 2)
-    (:int 4)
+    (:short 2)
     (:unsigned-int 4)
+    (:int 4)
     (:fixed 4) ;; 16.16 fixed point integer in 32-bits of space
     (:half-float 2) ;; half float in 16 bits of space.
+    (:float 4)
     (:double 8)))
 
 
@@ -100,12 +100,10 @@
 
 (defun vec->sv/unsigned-byte
     (gl-type out-svec write-byte-index in-vec read-element-index num-read-elems)
-  "Read a complete attribute whose component type is intended to be
-the GL-TYPE from (the CL vector/array) in-vec at
-read-element-index (one index per component) then convert each
-component to an unsigned-byte representation and write it into the
-static-vector out-svec at the write-byte-index location.  Return the
-values of out-svec and the number of bytes written."
+  "Read a NUM-READ-ELEMS of data from IN-VEC at READ-ELEMENT-INDEX
+that is intended to be GL-TYPE data and store in a native little
+endian unsigned-byte representation in OUT-VEC starting at
+WRITE-BYTE-INDEX."
   (let ((gl-type-byte-size (gl-type->byte-size gl-type)))
 
     (loop
@@ -139,6 +137,19 @@ values of out-svec and the number of bytes written."
           (incf write-count)))
 
     (values out-svec (* gl-type-byte-size num-read-elems))))
+
+
+(defun sv/unsigned-byte->vec (gl-type num-gl-elems in-svec read-sv-index
+                              &key out-vec (write-elem-index 0))
+  "Starting at the READ-SV-INDEX byte in the static vector IN-SVEC,
+extract NUM-GL-ELEMS of type GL-TYPE. If keyword argument :OUT-VEC is
+a CL single dimensional array or vector, then write the extracted
+elements to there starting at :WRITE-ELEM-INDEX, which defaults to
+0. Otherwise allocate a new array of NUM-GL-ELEMS whose size will be
+(+ WRITE-ELEM-INDEX NUM-GL-ELEMS), fill the array with the data, and
+return that."
+
+  nil)
 
 (defun test-3 ()
   "Test vec->static-vector/unsigned-byte."
