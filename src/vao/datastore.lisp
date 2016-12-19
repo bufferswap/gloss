@@ -145,8 +145,9 @@ and the number of bytes written to OUT-SVEC."
     (values out-svec (* gl-type-byte-size num-read-elems))))
 
 
+;; TODO, needs a lot of testing.
 (defun sv/unsigned-byte->vec (gl-type num-gl-elems in-svec read-sv-index
-                              &key out-vec (write-elem-index 0))
+                              &key (out-vec NIL) (write-elem-index 0))
   "Starting at the READ-SV-INDEX byte in the static vector IN-SVEC,
 extract NUM-GL-ELEMS of type GL-TYPE. If keyword argument :OUT-VEC is
 a CL single dimensional array or vector, then write the extracted
@@ -155,8 +156,47 @@ elements to there starting at :WRITE-ELEM-INDEX, which defaults to
 be (+ WRITE-ELEM-INDEX NUM-GL-ELEMS), fill the array with the data,
 and return that. Return OUT-VEC and the number of bytes read from
 IN-SVEC."
+  (let ((gl-type-byte-size (gl-type->byte-size gl-type))
+        (out-vec (if out-vec out-vec (make-array (+ write-elem-index
+                                                    num-gl-elems)))))
+    (loop
+       ;; how many bytes I've processed from in-svec
+       :with read-count = 0
+       ;; This is little endian.
+       :with endian4 = (vector (byte 8 0) (byte 8 8) (byte 8 16) (byte 8 24))
+       ;; stuff to decode the integers I made into real things.
+       :with decoder = (case gl-type
+                         (:float #'ieee-floats::decode-float32)
+                         (:half-float #'ieee-floats::decode-float16)
+                         (otherwise #'identity))
 
-  nil)
+       ;; create each data entry into the appropriate spot in out-vec
+       :for write-idx :from write-elem-index :below (+ num-gl-elems
+                                                       write-elem-index)
+
+       ;; Extract the unsigned bytes, condense into a larger integer based upon
+       ;; the number of bytes required for the gl-type.
+       :for value = (loop
+                       :with num = 0
+
+                       :for read-idx
+		       :from (+ read-sv-index read-count)
+		       :below (+ read-sv-index read-count gl-type-byte-size)
+
+                       :for endian-idx :from 0 :by 1
+		       :finally (return num)
+                       :do
+                       (setf num
+                             (dpb (aref in-svec read-idx)
+                                  (aref endian4 endian-idx)
+                                  num))
+                       (incf read-count))
+
+       :do
+       ;; and now decode the value and store it in out-svec at write-elem-index
+       (setf (aref out-vec write-idx) (funcall decoder value)))
+    out-vec))
+
 
 (defun test-3 ()
   "Test vec->static-vector/unsigned-byte."
