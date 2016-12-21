@@ -76,7 +76,7 @@
     (:int '(integer -2147483648 2147483647))
     (:unsigned-int '(integer 0 4294967295))
     ;; This next one isn't completely correct, but it is functionally correct.
-    (:fixed '(integer 0 4294967295)) ;; 16.16 fixed point integer in 32-bits
+    (:fixed 'single-float) ;; 16.16 fixed point integer
     (:half-float '(single-float -65504.0 65504.0)) ;; ieee 754-2008
     (:double 'double-float)))
 
@@ -104,8 +104,8 @@
 positive number VAL back into the signed common lisp infinite
 precision form of it."
   (logior (* (ldb (byte 1 (1- n-bit-width)) val)
-	     (- (expt 2 n-bit-width)))
-	  val))
+             (- (expt 2 n-bit-width)))
+          val))
 
 
 (defun allocate-gl-typed-static-vector (len gl-type)
@@ -127,6 +127,8 @@ and the number of bytes written to OUT-SVEC."
        ;; the function used to encode the value into whatever we need.
        :with encoder = (case gl-type
                          (:float #'ieee-floats::encode-float32)
+                         (:fixed (lambda (val)
+                                   (truncate (round (* val (expt 2 16))))))
                          (:half-float #'ieee-floats::encode-float16)
                          (otherwise #'identity))
        ;; This is little endian.
@@ -178,9 +180,11 @@ IN-SVEC."
        ;; stuff to decode the integers I made into real things.
        :with decoder = (case gl-type
                          (:float #'ieee-floats::decode-float32)
-			 (:byte (lambda (x) (decode-uN->sN x 8)))
-			 (:short (lambda (x) (decode-uN->sN x 16)))
-			 (:int (lambda (x) (decode-uN->sN x 32)))
+                         (:fixed (lambda (x) (float (/ (decode-uN->sN x 32)
+                                                       (expt 2 16)))))
+                         (:byte (lambda (x) (decode-uN->sN x 8)))
+                         (:short (lambda (x) (decode-uN->sN x 16)))
+                         (:int (lambda (x) (decode-uN->sN x 32)))
                          (:half-float #'ieee-floats::decode-float16)
                          (otherwise #'identity))
 
@@ -194,11 +198,11 @@ IN-SVEC."
                        :with num = 0
 
                        :for read-idx
-		       :from (+ read-sv-index read-count)
-		       :below (+ read-sv-index read-count gl-type-byte-size)
+                       :from (+ read-sv-index read-count)
+                       :below (+ read-sv-index read-count gl-type-byte-size)
 
                        :for endian-idx :from 0 :by 1
-		       :finally (return num)
+                       :finally (return num)
                        :do
                        (setf num
                              (dpb (aref in-svec read-idx)
@@ -214,7 +218,7 @@ IN-SVEC."
 
 (defun test-3 ()
   "Test vec->static-vector/unsigned-byte."
-  (let ((out-vec (allocate-gl-typed-static-vector 32 :unsigned-byte))
+  (let ((sv (allocate-gl-typed-static-vector 32 :unsigned-byte))
         (tests `( ;; gl-type write-index in-vec read-index
                  (:unsigned-byte 0 ,(vector 0 1 2 3 255) 0)
                  (:byte 0 ,(vector -2 -1 0 1 2) 0)
@@ -222,25 +226,47 @@ IN-SVEC."
                  (:short 0 ,(vector -32768 -32767 -1 0 1 32766 32767) 0)
                  (:int 0 ,(vector -2147483648 -1 0 1 2147483647) 0)
                  (:unsigned-int 0 ,(vector 0 1 2 4294967295) 0)
-                 (:fixed 0 ,(vector #x00010000 #x00020000 #x00030000) 0)
+                 (:fixed 0 ,(vector -2.0 -1.5 -1.0 0 1.0 1.5 2.0) 0)
                  (:half-float 0 ,(vector -65504.0 -2 1.5 0 1.5 2.0 65504.0) 0)
-                 (:float 0 ,(vector -2 -1.5 0 1.5 2.0) 0))))
+                 (:float 0 ,(vector -2 -1.5 0 1.5 2.0) 0)))
+        (passed 0))
 
     (flet ((clear (sv)
              ;; clear out-vec...
              (loop :for idx :below (length sv) :do
                 (setf (aref sv idx) 0)))
 
-           (stored (gl-type in-vec read-index out-vec write-index)
-             (format t "Stored ~A:~%in-vec = ~A from index ~A~%out-vec= into ~A~%at byte index ~A~%~%"
-                     gl-type in-vec read-index out-vec write-index)))
+           (stored (gl-type in-vec read-index sv write-index)
+             (format t "Stored ~A:~%in-vec = ~A from index ~A~%sv= into ~A~%at byte index ~A~%"
+                     gl-type in-vec read-index sv write-index)))
 
       ;; test each gl-type
       (loop :for (gl-type read-index in-vec write-index) :in tests :do
-         (clear out-vec)
-         (vec->sv/unsigned-byte gl-type out-vec write-index in-vec read-index
+         (clear sv)
+         ;; first, fill it.
+         (vec->sv/unsigned-byte gl-type sv write-index in-vec read-index
                                 (length in-vec))
-         (stored gl-type in-vec read-index out-vec write-index))
+         ;; then emit what we did.
+         (stored gl-type in-vec read-index sv write-index)
+         ;; Then extract it
+         (let ((out-vec (sv/unsigned-byte->vec gl-type (length in-vec) sv 0)))
+
+           (format t "out-vec is ~A~%" out-vec)
+
+           ;; and compare
+           (cond
+             ;; = is not entirely appropriate for for floating point values,
+             ;; and definitely not appropriate for :fixed, since :fixed is
+             ;; designed to lose precision.
+             ((every #'identity (map 'vector #'= in-vec out-vec))
+              (format t "gl-type: ~A PASSED~%" gl-type)
+              (incf passed))
+             (t
+              (format t "gl-type: ~A FAILUE~%" gl-type)))
+
+           (format t "~%")))
+
+      (format t "Out of ~A tests, ~A passed.~%" (length tests) passed)
 
 
-      (static-vectors:free-static-vector out-vec))))
+      (static-vectors:free-static-vector sv))))
