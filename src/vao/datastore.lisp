@@ -102,7 +102,7 @@
 (defun decode-uN->sN (val n-bit-width)
   "Slowly decode a twos complement number encoded into the unsigned
 positive number VAL back into the signed common lisp infinite
-precision form of it."
+precision form of it. This is really a sign-extension operation."
   (logior (* (ldb (byte 1 (1- n-bit-width)) val)
              (- (expt 2 n-bit-width)))
           val))
