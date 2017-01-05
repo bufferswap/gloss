@@ -19,7 +19,9 @@
   ;; How long is the raw representation of the attribute entry (including all
   ;; of its components) in bytes?
   raw-byte-length
-  ;; What is the byte length of the fully alignable attribute?
+  ;; Should this attribute be aligned?
+  alignp
+  ;; If alignp, What is the byte length of the fully alignable attribute?
   aligned-byte-length
   ;; In the datastore, what is the byte offset to the first attribute in the
   ;; native data array?
@@ -28,7 +30,7 @@
   stride
   ;; How many valid entries have we stored in the data store?
   num-valid-attributes
-  ;; When we need to write the next attribute intot he data store, what is
+  ;; When we need to append the next attribute into the data store, what is
   ;; the byte index at which we need to write it?
   byte-write-index)
 
@@ -39,10 +41,6 @@
   ((%force-alignment-p :initarg :force-alignment-p
                        :initform T
                        :accessor force-alignment-p)
-   ;; What is the attribute alignment number?
-   (%alignment :initarg :alignment
-               :initform 1
-               :accessor alignment)
    ;; The actual static-vector storage for the attribute data.
    (%native-data :initarg :native-data
                  :initform NIL
@@ -58,13 +56,10 @@
                  :initform (make-hash-table)
                  :accessor descriptors)))
 
-(defun make-datastore (datastore-name layout-set &key (force-align-p T))
-  ;; 1. Lookup datastore in layout-set.
-  ;; 2. Looking at the component types of all of the attributes:
-  ;; 2a. Determine the best native-type that leads to the least memory copying.
-  ;; 2b. Compute and store appropriate alignment-descriptors.
-  ;; 3. TODO
-  nil)
+(defun align-up-to (value power)
+  "Align the value up to the next (expt 2 POWER) multiple if required."
+  (let ((align (expt 2 power)))
+    (logand (+ value (1- align)) (lognot (1- align)))))
 
 (defun gl-type->cl-type (gl-type)
   (ecase gl-type
@@ -270,3 +265,13 @@ IN-SVEC."
 
 
       (static-vectors:free-static-vector sv))))
+
+
+(defun make-datastore (datastore-name layout-set &key (force-align-p T))
+  ;; 1. Lookup datastore in layout-set.
+  ;; 2. Looking at the component types of all of the attributes:
+  ;; 3. We store everything in a unsigned-byte array. This suffers in
+  ;; performance, but allows for faster implementing.
+  ;; 4. Create the attribute-descriptor for each attribute we need to write into
+  ;; the datastore native-data array.
+  nil)
