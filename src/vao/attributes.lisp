@@ -101,3 +101,6 @@ location defined."
         (:error
          (gloss-error kind value))))
     attribute-set))
+
+(defun lookup-attribute (attribute-name attribute-set)
+  (gethash attribute-name (attributes attribute-set)))

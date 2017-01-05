@@ -5,6 +5,7 @@
 (defstruct (datastore-properties (:constructor %make-datastore-properties)
                                  (:conc-name nil))
   data-format
+  (align T)
   (binding-target :array-buffer)
   (usage-hint :static-draw))
 
@@ -34,22 +35,22 @@
   (with-slots (attribute-usage) layout-set
     (symbol-macrolet ((name-ref (gethash attribute-name attribute-usage)))
       (if (nth-value 1 name-ref)
-	  (incf name-ref)
-	  (setf name-ref 1)))))
+          (incf name-ref)
+          (setf name-ref 1)))))
 
 (defun add-datastore-template (layout-set datastore-name datastore-template)
   (with-slots (attribute-set attribute-view) layout-set
     (loop :for attr-name :in datastore-template
-          :for formal-name = (list datastore-name attr-name)
-          :do (unless (gethash attr-name (attributes attribute-set))
-                (gloss-error :attribute-undefined attr-name))
-              (setf (gethash formal-name attribute-view) datastore-name)
-              (count-attribute-usage attr-name layout-set))))
+       :for formal-name = (list datastore-name attr-name)
+       :do (unless (gethash attr-name (attributes attribute-set))
+             (gloss-error :attribute-undefined attr-name))
+       (setf (gethash formal-name attribute-view) datastore-name)
+       (count-attribute-usage attr-name layout-set))))
 
 (defun add-named-datastore-layout (layout-set datastore-name
-				   datastore-properties datastore-template)
+                                   datastore-properties datastore-template)
   (setf (gethash datastore-name (layouts layout-set))
-	(make-layout datastore-properties datastore-template))
+        (make-layout datastore-properties datastore-template))
   (add-datastore-template layout-set datastore-name datastore-template))
 
 (defun generate-valid-attribute-short-names (layout-set)
@@ -66,12 +67,15 @@
   (let ((layout-set (%make-layout-set :attribute-set attribute-set
                                       :primitive primitive)))
     (loop :for (datastore-properties . named-layouts) :in datastore-specs
-          :do (loop :for (datastore-name datastore-template) :in named-layouts
-		    :do (add-named-datastore-layout
-		         layout-set datastore-name
-			 datastore-properties datastore-template)))
+       :do (loop :for (datastore-name datastore-template) :in named-layouts
+              :do (add-named-datastore-layout
+                   layout-set datastore-name
+                   datastore-properties datastore-template)))
     (generate-valid-attribute-short-names layout-set)
     layout-set))
+
+(defun lookup-named-layout (datastore-name layout-set)
+  (gethash datastore-name (layouts layout-set)))
 
 (defun doit ()
   (let ((attr-set (make-attribute-set '(position :count 3)

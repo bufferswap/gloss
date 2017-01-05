@@ -211,7 +211,7 @@ IN-SVEC."
     out-vec))
 
 
-(defun test-3 ()
+(defun test-0 ()
   "Test vec->static-vector/unsigned-byte."
   (let ((sv (allocate-gl-typed-static-vector 32 :unsigned-byte))
         (tests `( ;; gl-type write-index in-vec read-index
@@ -267,11 +267,24 @@ IN-SVEC."
       (static-vectors:free-static-vector sv))))
 
 
+;; TODO: This returns a datastore whose native-data type is always
+;; unsigned-byte.
 (defun make-datastore (datastore-name layout-set &key (force-align-p T))
   ;; 1. Lookup datastore in layout-set.
-  ;; 2. Looking at the component types of all of the attributes:
-  ;; 3. We store everything in a unsigned-byte array. This suffers in
-  ;; performance, but allows for faster implementing.
-  ;; 4. Create the attribute-descriptor for each attribute we need to write into
-  ;; the datastore native-data array.
-  nil)
+  (let ((named-layout (lookup-named-layout datastore-name layout-set))
+        (attr-set (attribute-set layout-set)))
+
+    ;; check what I'm about to work with...
+    (format t "named-datastore ~A is ~A~%" datastore-name named-layout)
+    (loop :for attr :in (template named-layout) :do
+       (format t "Attribute: ~A -> ~A~%" attr (lookup-attribute attr attr-set)))
+
+    ;; 2 Create the attribute descriptors we need, taking into consideration
+    ;; the alignment.
+
+    ;; the datastore native-data array.
+    nil))
+
+
+(defun test-1 ()
+  (make-datastore 'vertices (doit)))
