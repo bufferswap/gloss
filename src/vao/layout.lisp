@@ -80,7 +80,7 @@
 (defun doit ()
   (let ((attr-set (make-attribute-set '(position :count 3)
                                       '(normal :count 3)
-                                      '(uv :count 3)
+                                      '(uv :type :short :count 3)
                                       '(color :count 3)
                                       '(weight :type :short :count 3))))
     (make-layout-set
@@ -93,6 +93,6 @@
      '(((:data-format :separate)
         (:binding-target :array-buffer)
         (:usage-hint :static-draw)
-        (:align NIL))
+        (:align T))
        (colors (color))
        (weights (weight))))))

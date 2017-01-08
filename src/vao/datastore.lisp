@@ -16,12 +16,14 @@
 ;; information about how that attribute is exactly layed out into the
 ;; datastore, how many entries of that attribute there are, etc, etc, etc.
 (defclass attribute-descriptor ()
-  (;; A reference to the attribute in the attribute set.
+  (;; A reference to the attribute in the attribute set for which we built
+   ;; this descriptor.
    (%attr :initarg :attr
           :initform NIL
           :accessor attr)
    ;; How long is the raw representation of the attribute entry (including all
    ;; of its components) in bytes?
+   ;; NOTE: Maybe this should just be a call to (attribute-size attr).
    (%raw-byte-length :initarg :raw-byte-length
                      :initform 0
                      :accessor raw-byte-length)
@@ -29,6 +31,11 @@
    (%aligned-byte-length :initarg :aligned-byte-length
                          :initform NIL
                          :accessor aligned-byte-length)
+   ;; When appending, this is the attribute index into which we should
+   ;; start appending.
+   (%appending-index :initarg :appending-index
+                     :initform 0
+                     :accessor appending-index)
    ;; In the datastore, what is the byte offset to the first attribute in the
    ;; native data array?
    (%offset :initarg :offset
@@ -37,24 +44,22 @@
    ;; What is the stride to the next attribute entry?
    (%stride :initarg :stride
             :initform 0
-            :accessor stride)
-   ;; How many valid entries have we stored in the data store?
-   (%num-valid-attributes :initarg :num-valid-attributes
-                          :initform 0
-                          :accessor num-valid-attributes)
-   ;; When we need to append the next attribute into the data store, what is
-   ;; the byte index at which we need to write it?
-   (%byte-write-index :initarg :byte-write-index
-                      :initform 0
-                      :accessor byte-write-index)))
+            :accessor stride)))
 
 ;; A datastore is responsible for ONE native array of attribute data.
 (defclass datastore ()
-  ;; To what should we align the start of each attribute?
-  ;; This is the same for all attributes in the datastore.
-  ((%force-alignment-p :initarg :force-alignment-p
-                       :initform T
-                       :accessor force-alignment-p)
+  (
+   ;; This is how many template group instances may be stored in the native
+   ;; data array.
+   ;;
+   ;; Example:
+   ;; If the datastore is :interleave and the
+   ;; template group (position normal uv), then a size of
+   ;; 16 means there will be 16 (position normal uv) groups in the array.
+   ;; This also means there are 16 positions, 16 normals, and 16 uvs.
+   (%size :initarg :size
+          :initform 0
+          :accessor size)
    ;; The actual static-vector storage for the attribute data.
    (%native-data :initarg :native-data
                  :initform NIL
@@ -288,7 +293,6 @@ IN-SVEC."
 ;; the definition of the datastore-name whose native-data type is
 ;; always unsigned-byte.
 (defun make-datastore (datastore-name layout-set)
-  ;; 1. Lookup datastore in layout-set.
   (let ((datastore (make-instance 'datastore))
         (named-layout (lookup-named-layout datastore-name layout-set))
         (attr-set (attribute-set layout-set)))
@@ -305,51 +309,37 @@ IN-SVEC."
 
     datastore))
 
-(defgeneric gen-attribute-descriptors (kind named-layout attr-set))
+(defun compute-attr-alignment (attr named-layout)
+  ;; attr is a defstruct of the attr from the attr-set
+  (let ((attr-byte-len (attribute-size attr))
+        (attr-type-size (attribute-type-size attr)))
+    (if (align (properties named-layout))
+        ;; align up to the next multiple of 4 or the size of the
+        ;; component type, whichever is larger.
+        (next-multiple attr-byte-len (max 4 attr-type-size))
+        ;; assume alignment value of 1, so keep raw byte length
+        attr-byte-len)))
 
+(defgeneric gen-attribute-descriptors (kind named-layout attr-set))
 
 (defmethod gen-attribute-descriptors ((kind (eql :separate))
                                       named-layout attr-set)
   ;; We only need 1 attribute-descriptor for a :separate datastore since there
   ;; is only 1 attribute to ever worry about.
-  (let* ((descriptor (make-instance 'attribute-descriptor))
-         (attribute-desc-table (make-hash-table))
+  (let* ((attribute-desc-table (make-hash-table))
          (attr-name (first (template named-layout)))
-         (attr (lookup-attribute attr-name attr-set)))
+         (attr (lookup-attribute attr-name attr-set))
+         (attr-byte-len (attribute-size attr))
+         (aligned-attr-byte-len (compute-attr-alignment attr named-layout)))
 
-    ;; 0. Set up a reference to the real attribute definition.
-    (setf (attr descriptor) attr)
-
-    ;; 1. compute raw attribute length
-    (setf (raw-byte-length descriptor)
-          (attribute-size attr))
-
-    ;; 2. Compute alignment size, which is the one we really use.
-    (setf (aligned-byte-length descriptor)
-          (if (align (properties named-layout))
-              ;; align up to the next multiple of 4 or the size of the
-              ;; component type, whichever is larger.
-              (next-multiple (raw-byte-length descriptor)
-                             (max 4 (attribute-type-size attr)))
-              ;; assume alignment value of 1, so keep raw byte length
-              (raw-byte-length descriptor)))
-
-    ;; 3. Compute offset, only one attribute in a :separate layout,
-    ;; its offset is 0.
-    (setf (offset descriptor) 0)
-
-    ;; 4. Compute Stride (for the whole attribute)
-    ;; NOTE: I verified it is ok to use stride even in the case of a tightly
-    ;; packed set of attributes. In this case, this is correct if we align
-    ;; or not.
-    (setf (stride descriptor) (aligned-byte-length descriptor))
-
-    ;; 5. Compute the byte position where we write new entries into the
-    ;; native datastore array.
-    (setf (byte-write-index descriptor) 0)
-
-    ;; insert the descriptor into the table.
-    (setf (gethash attr-name attribute-desc-table) descriptor)
+    (setf (gethash attr-name attribute-desc-table)
+          (make-instance 'attribute-descriptor
+                         :attr attr
+                         :raw-byte-length attr-byte-len
+                         :aligned-byte-length aligned-attr-byte-len
+                         :appending-index 0
+                         :offset 0
+                         :stride aligned-attr-byte-len))
 
     ;; return the hash table.
     attribute-desc-table))
@@ -357,11 +347,46 @@ IN-SVEC."
 
 (defmethod gen-attribute-descriptors ((kind (eql :interleave))
                                       named-layout attr-set)
-  nil)
+  (let* ((attribute-desc-table (make-hash-table))
+         ;; 1. assemble the attribute-descriptors in order in the template
+         ;; with any easy stuff we can calculate right away.
+         (descriptors
+          (mapcar (lambda (attr-name)
+                    (let* ((attr (lookup-attribute attr-name attr-set)))
+                      (make-instance
+                       'attribute-descriptor
+                       :attr attr
+                       :raw-byte-length (attribute-size attr)
+                       :aligned-byte-length (compute-attr-alignment
+                                             attr
+                                             named-layout))))
+
+                  (template named-layout))))
+
+    ;; 2. compute offsets and stride for each attribute-descriptor
+    (loop
+       :with offset = 0
+       :with stride = (reduce #'+ descriptors
+                              :key (lambda (dsc) (aligned-byte-length dsc)))
+       :for desc :in descriptors :do
+       ;; compute offset
+       (setf (offset desc) offset)
+       ;; compute stride
+       (setf (stride desc) stride)
+       ;; and increment the offset for the next attribute.
+       (incf offset (aligned-byte-length desc)))
+
+    ;; 3. Insert all descriptors into hash table
+    (loop
+       :for desc :in descriptors
+       :for attr-name :in (template named-layout) :do
+       (setf (gethash attr-name attribute-desc-table) desc))
+
+    attribute-desc-table))
 
 
 (defmethod gen-attribute-descriptors ((kind (eql :block)) named-layout attr-set)
-  nil)
+  (error "attribute-descriptors for :block are unimplemented"))
 
 
 (defun test-1 (&optional (datastore-name 'vertices))
