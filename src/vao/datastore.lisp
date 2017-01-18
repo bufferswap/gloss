@@ -317,7 +317,7 @@ IN-SVEC."
                  :for d :being :the :hash-values :in (descriptors datastore)
                  :summing (aligned-byte-length d)))))
       (format t "Allocating native-data :unsigned-byte size of: ~A~%"
-	      native-data-size-in-bytes)
+              native-data-size-in-bytes)
 
       (setf (native-type datastore) :unsigned-byte ;; the GL type...
 
@@ -413,6 +413,38 @@ IN-SVEC."
 
 (defmethod gen-attribute-descriptors ((kind (eql :block)) named-layout attr-set)
   (error "attribute-descriptors for :block are unimplemented"))
+
+
+(defmethod attr-ref ((ds datastore) name index &rest components)
+  ;; 1. Find the attribute descriptor for NAME.
+  (let ((attr-desc (gethash name (descriptors ds))))
+
+    (unless attr-desc
+      (error
+       "ATTR-REF: Non existent attrbute name: ~A in datastore descriptors ~A"
+       name (descriptors ds)))
+
+    ;; 2. Find the start byte of the attribute at the specified index.
+    (let ((attr-read-byte-start (* index (aligned-byte-length attr-desc))))
+
+      ;; 3. Analyze components, and return the required quantity.
+      (cond
+        (;; A. We want the whole thing returned in a CL array, no
+	 ;; components specified.
+	 (null components)
+         (let* ((num-components (attr-count (attr attr-desc)))
+                (result (make-array num-components)))
+
+           ;; TODO: Implement me.
+           nil))
+
+        (t
+         (error "attr-ref: not implemented yet"))))))
+
+
+
+(defmethod (setf attr-ref) (new-val (ds datastore) name index &rest components)
+  nil)
 
 
 (defun test-1 (&optional (datastore-name 'vertices))
