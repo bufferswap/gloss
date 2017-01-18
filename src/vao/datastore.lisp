@@ -429,26 +429,73 @@ IN-SVEC."
 
       ;; 3. Analyze components, and return the required quantity.
       (cond
-        (;; A. We want the whole thing returned in a CL array, no
-	 ;; components specified.
-	 (null components)
+        ((null components)
+         ;; A. No components specified, return all attribute components as
+         ;; a cl array.
          (let* ((num-components (attr-count (attr attr-desc)))
+                (attr-start-byte-idx
+                 (+ (offset attr-desc)
+                    (* index (stride attr-desc))))
                 (result (make-array num-components)))
 
-           ;; TODO: Implement me.
-           nil))
+           ;; B. Extract the components
+           (sv/unsigned-byte->vec (attr-type (attr attr-desc))
+                                  num-components
+                                  (native-data ds)
+                                  attr-start-byte-idx
+                                  :out-vec result)
+           result))
 
         (t
          (error "attr-ref: not implemented yet"))))))
 
 
 
-(defmethod (setf attr-ref) (new-val (ds datastore) name index &rest components)
-  nil)
+(defmethod (setf attr-ref) (comp-vec (ds datastore) name index &rest components)
+  ;; 1. Find the attribute descriptor for NAME.
+  (let ((attr-desc (gethash name (descriptors ds))))
+
+    (unless attr-desc
+      (error
+       "SETF ATTR-REF: Non existent attrbute name: ~A in datastore descriptors ~A"
+       name (descriptors ds)))
+
+    ;; 2. Find the start byte of the attribute at the specified index.
+    (let ((attr-read-byte-start (* index (aligned-byte-length attr-desc))))
+
+      ;; 3. Analyze components, so we know what we're going to set.
+      (cond
+        ((null components)
+         ;; A. No components specified, we're setting all components.
+         (let* ((num-components (attr-count (attr attr-desc)))
+                (attr-start-byte-idx
+                 (+ (offset attr-desc)
+                    (* index (stride attr-desc)))))
+
+           ;; B. Insert the components
+           (vec->sv/unsigned-byte (attr-type (attr attr-desc))
+                                  (native-data ds)
+                                  attr-start-byte-idx
+                                  comp-vec
+                                  0
+                                  (attr-count (attr attr-desc)))
+
+           ;; Don't have a good return value here...
+           (attr-count (attr attr-desc))))
+
+        (t
+         (error "setf attr-ref: not implemented yet"))))))
+
 
 
 (defun test-1 (&optional (datastore-name 'vertices))
   (let ((ds (make-datastore datastore-name (doit))))
+    (setf (attr-ref ds 'position 0) #(1.0 2.0 3.0))
+    (setf (attr-ref ds 'normal 0) #(4.0 5.0 6.0))
+    (setf (attr-ref ds 'uv 0) #(22 33 44))
+    (format t "position[0]: ~A~%" (attr-ref ds 'position 0))
+    (format t "normal[0]: ~A~%" (attr-ref ds 'normal 0))
+    (format t "uv[0]: ~A~%" (attr-ref ds 'uv 0))
     (inspect ds)
 
     (destroy-datastore ds)))
