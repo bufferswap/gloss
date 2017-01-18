@@ -292,7 +292,10 @@ IN-SVEC."
 ;; TODO: This returns a datastore to store the data appropriate for
 ;; the definition of the datastore-name whose native-data type is
 ;; always unsigned-byte.
-(defun make-datastore (datastore-name layout-set)
+(defun make-datastore (datastore-name layout-set
+                       &key (num-attrs 4)
+                         (resize (lambda (curr-num-attrs)
+                                   (+ curr-num-attrs 4))))
   (let ((datastore (make-instance 'datastore))
         (named-layout (lookup-named-layout datastore-name layout-set))
         (attr-set (attribute-set layout-set)))
@@ -307,7 +310,30 @@ IN-SVEC."
           (gen-attribute-descriptors (data-format (properties named-layout))
                                      named-layout attr-set))
 
-    datastore))
+    ;; 2. Allocate the native array.
+    (let ((native-data-size-in-bytes
+           (* num-attrs
+              (loop
+                 :for d :being :the :hash-values :in (descriptors datastore)
+                 :summing (aligned-byte-length d)))))
+      (format t "Allocating native-data :unsigned-byte size of: ~A~%"
+	      native-data-size-in-bytes)
+
+      (setf (native-type datastore) :unsigned-byte ;; the GL type...
+
+            (native-data datastore)
+            (allocate-gl-typed-static-vector native-data-size-in-bytes
+                                             (native-type datastore)))
+
+      ;; Clear it all out, too.
+      (loop :for i :below native-data-size-in-bytes :do
+         (setf (aref (native-data datastore) i) 0))
+
+      datastore)))
+
+(defun destroy-datastore (datastore)
+  (when (native-data datastore)
+    (static-vectors:free-static-vector (native-data datastore))))
 
 (defun compute-attr-alignment (attr named-layout)
   ;; attr is a defstruct of the attr from the attr-set
@@ -390,4 +416,7 @@ IN-SVEC."
 
 
 (defun test-1 (&optional (datastore-name 'vertices))
-  (make-datastore datastore-name (doit)))
+  (let ((ds (make-datastore datastore-name (doit))))
+    (inspect ds)
+
+    (destroy-datastore ds)))
