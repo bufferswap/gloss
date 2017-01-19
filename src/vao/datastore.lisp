@@ -32,7 +32,8 @@
             :initform 0
             :accessor stride)))
 
-;; This is used to describe how attributes are layed out by an incoming dsl.
+;; This is used to describe how attributes are layed out in a regular CL
+;; array like gotten from make-array or vector or #( ... ).
 (defclass dsl-attribute-descriptor (attribute-descriptor) ())
 
 ;; This is used to describe how attributes are layed out in the native-data
