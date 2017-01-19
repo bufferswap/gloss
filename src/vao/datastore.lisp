@@ -26,7 +26,7 @@
           :initform NIL
           :accessor attr)
    ;; In the datastore, what is the offset to the first attribute in the
-   ;; native data array?
+   ;; data array?
    (%offset :initarg :offset
             :initform 0
             :accessor offset)
