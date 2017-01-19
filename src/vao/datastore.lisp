@@ -78,7 +78,7 @@
                  :initform NIL
                  :accessor native-type)
    ;; A hash table keyed by attribute shortname and whose value is
-   ;; an attribute-descriptor structure.
+   ;; a native-attribute-descriptor structure.
    (%descriptors :initarg :descriptors
                  :initform (make-hash-table)
                  :accessor descriptors)))
