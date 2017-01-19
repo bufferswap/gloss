@@ -13,9 +13,10 @@
                                     5 10 nil)
 
 
-;; In a datastore, we record, for each attribute participating,
-;; information about how that attribute is exactly layed out into the
-;; datastore, how many entries of that attribute there are, etc, etc, etc.
+;; This decribes how a attribute is layed out in a generalized array.
+;; This specific class is suitable for picking attributes out of incoming
+;; datra arrays which are usually regular CL arrays of ARRAY or VECTOR type
+;; such as MAKE-ARRAY, VECTOR, or #().
 (defclass attribute-descriptor ()
   (;; A reference to the attribute in the attribute set for which we built
    ;; this descriptor.
@@ -32,12 +33,10 @@
             :initform 0
             :accessor stride)))
 
-;; This is used to describe how attributes are layed out in a regular CL
-;; array like gotten from make-array or vector or #( ... ).
-(defclass dsl-attribute-descriptor (attribute-descriptor) ())
-
-;; This is used to describe how attributes are layed out in the native-data
-;; array in a datastore.
+;; However, in the native-data representation of the attributes, we need more
+;; specific information about exact byte layouts, byte lengths, and such,
+;; so we derive an attribute-descriptor to further specialize the kind of
+;; attribute-descriptor we need for native-data storage in a datastore.
 (defclass native-attribute-descriptor (attribute-descriptor)
   (;; How long is the raw representation of the attribute entry (including all
    ;; of its components) in bytes?
