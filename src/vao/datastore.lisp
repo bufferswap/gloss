@@ -12,6 +12,7 @@
                                     ieee-floats::decode-float16
                                     5 10 nil)
 
+
 ;; In a datastore, we record, for each attribute participating,
 ;; information about how that attribute is exactly layed out into the
 ;; datastore, how many entries of that attribute there are, etc, etc, etc.
@@ -21,7 +22,23 @@
    (%attr :initarg :attr
           :initform NIL
           :accessor attr)
-   ;; How long is the raw representation of the attribute entry (including all
+   ;; In the datastore, what is the byte offset to the first attribute in the
+   ;; native data array?
+   (%offset :initarg :offset
+            :initform 0
+            :accessor offset)
+   ;; What is the stride to the next attribute entry?
+   (%stride :initarg :stride
+            :initform 0
+            :accessor stride)))
+
+;; This is used to describe how attributes are layed out by an incoming dsl.
+(defclass dsl-attribute-descriptor (attribute-descriptor) ())
+
+;; This is used to describe how attributes are layed out in the native-data
+;; array in a datastore.
+(defclass native-attribute-descriptor (attribute-descriptor)
+  (;; How long is the raw representation of the attribute entry (including all
    ;; of its components) in bytes?
    ;; NOTE: Maybe this should just be a call to (attribute-size attr).
    (%raw-byte-length :initarg :raw-byte-length
@@ -35,16 +52,7 @@
    ;; start appending.
    (%appending-index :initarg :appending-index
                      :initform 0
-                     :accessor appending-index)
-   ;; In the datastore, what is the byte offset to the first attribute in the
-   ;; native data array?
-   (%offset :initarg :offset
-            :initform 0
-            :accessor offset)
-   ;; What is the stride to the next attribute entry?
-   (%stride :initarg :stride
-            :initform 0
-            :accessor stride)))
+                     :accessor appending-index)))
 
 ;; A datastore is responsible for ONE native array of attribute data.
 (defclass datastore ()
@@ -359,7 +367,7 @@ IN-SVEC."
          (aligned-attr-byte-len (compute-attr-alignment attr named-layout)))
 
     (setf (gethash attr-name attribute-desc-table)
-          (make-instance 'attribute-descriptor
+          (make-instance 'native-attribute-descriptor
                          :attr attr
                          :raw-byte-length attr-byte-len
                          :aligned-byte-length aligned-attr-byte-len
@@ -380,7 +388,7 @@ IN-SVEC."
           (mapcar (lambda (attr-name)
                     (let* ((attr (lookup-attribute attr-name attr-set)))
                       (make-instance
-                       'attribute-descriptor
+                       'native-attribute-descriptor
                        :attr attr
                        :raw-byte-length (attribute-size attr)
                        :aligned-byte-length (compute-attr-alignment
