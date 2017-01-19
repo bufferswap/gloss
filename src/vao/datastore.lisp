@@ -17,13 +17,15 @@
 ;; This specific class is suitable for picking attributes out of incoming
 ;; datra arrays which are usually regular CL arrays of ARRAY or VECTOR type
 ;; such as MAKE-ARRAY, VECTOR, or #().
+;;
+;; NOTE: offset and stride are in ELEMENTS in this class instance.
 (defclass attribute-descriptor ()
   (;; A reference to the attribute in the attribute set for which we built
    ;; this descriptor.
    (%attr :initarg :attr
           :initform NIL
           :accessor attr)
-   ;; In the datastore, what is the byte offset to the first attribute in the
+   ;; In the datastore, what is the offset to the first attribute in the
    ;; native data array?
    (%offset :initarg :offset
             :initform 0
@@ -37,6 +39,8 @@
 ;; specific information about exact byte layouts, byte lengths, and such,
 ;; so we derive an attribute-descriptor to further specialize the kind of
 ;; attribute-descriptor we need for native-data storage in a datastore.
+;;
+;; NOTE: offset and stride are in BYTES in this class instance.
 (defclass native-attribute-descriptor (attribute-descriptor)
   (;; How long is the raw representation of the attribute entry (including all
    ;; of its components) in bytes?
