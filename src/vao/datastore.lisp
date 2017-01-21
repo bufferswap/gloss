@@ -35,10 +35,10 @@
             :initform 0
             :accessor stride)))
 
-;; However, in the native-data representation of the attributes, we need more
+;; However, in the data representation of the attributes, we need more
 ;; specific information about exact byte layouts, byte lengths, and such,
 ;; so we derive an attribute-descriptor to further specialize the kind of
-;; attribute-descriptor we need for native-data storage in a datastore.
+;; attribute-descriptor we need for data storage in a datastore.
 ;;
 ;; NOTE: offset and stride are in BYTES in this class instance.
 (defclass native-attribute-descriptor (attribute-descriptor)
@@ -58,7 +58,9 @@
                      :initform 0
                      :accessor appending-index)))
 
-;; A datastore is responsible for ONE native array of attribute data.
+;; A datastore is responsible for representing the layout of all attributes
+;; in an array. The base data store class can represent CL arrays. This is
+;; used to manage incoming data arrays.
 (defclass datastore ()
   (
    ;; This is how many template group instances may be stored in the native
@@ -73,19 +75,26 @@
           :initform 0
           :accessor size)
    ;; The actual static-vector storage for the attribute data.
-   (%native-data :initarg :native-data
-                 :initform NIL
-                 :accessor native-data)
+   (%data :initarg :data
+          :initform NIL
+          :accessor data)
    ;; The raw type of the static-vector. We sometimes need to know this before
-   ;; having an actual native-data array.
-   (%native-type :initarg :native-type
-                 :initform NIL
-                 :accessor native-type)
+   ;; having an actual data array.
+   (%data-type :initarg :data-type
+               :initform NIL
+               :accessor data-type)
    ;; A hash table keyed by attribute shortname and whose value is
    ;; a native-attribute-descriptor structure.
    (%descriptors :initarg :descriptors
                  :initform (make-hash-table)
                  :accessor descriptors)))
+
+;; This derived type of datastore has methods on it to understand the
+;; fact that this type represents binary level attribute layouts in
+;; native machine memory arrays (such as static-vectors) which are
+;; suitable for upload to the GPU.
+(defclass native-datastore (datastore) ())
+
 
 (defun align-up-to (value power)
   "Align the value up to the next (expt 2 POWER) multiple if required."
@@ -302,13 +311,13 @@ IN-SVEC."
 
 
 ;; TODO: This returns a datastore to store the data appropriate for
-;; the definition of the datastore-name whose native-data type is
+;; the definition of the datastore-name whose data type is
 ;; always unsigned-byte.
-(defun make-datastore (datastore-name layout-set
-                       &key (num-attrs 4)
-                         (resize (lambda (curr-num-attrs)
-                                   (+ curr-num-attrs 4))))
-  (let ((datastore (make-instance 'datastore))
+(defun make-native-datastore (datastore-name layout-set
+                              &key (num-attrs 4)
+                                (resize (lambda (curr-num-attrs)
+                                          (+ curr-num-attrs 4))))
+  (let ((datastore (make-instance 'native-datastore))
         (named-layout (lookup-named-layout datastore-name layout-set))
         (attr-set (attribute-set layout-set)))
 
@@ -323,29 +332,33 @@ IN-SVEC."
                                      named-layout attr-set))
 
     ;; 2. Allocate the native array.
-    (let ((native-data-size-in-bytes
+    (let ((data-size-in-bytes
            (* num-attrs
               (loop
                  :for d :being :the :hash-values :in (descriptors datastore)
                  :summing (aligned-byte-length d)))))
-      (format t "Allocating native-data :unsigned-byte size of: ~A~%"
-              native-data-size-in-bytes)
+      (format t "Allocating data :unsigned-byte size of: ~A~%"
+              data-size-in-bytes)
 
-      (setf (native-type datastore) :unsigned-byte ;; the GL type...
+      (setf (data-type datastore) :unsigned-byte ;; the GL type...
 
-            (native-data datastore)
-            (allocate-gl-typed-static-vector native-data-size-in-bytes
-                                             (native-type datastore)))
+            (data datastore)
+            (allocate-gl-typed-static-vector data-size-in-bytes
+                                             (data-type datastore)))
 
       ;; Clear it all out, too.
-      (loop :for i :below native-data-size-in-bytes :do
-         (setf (aref (native-data datastore) i) 0))
+      (loop :for i :below data-size-in-bytes :do
+         (setf (aref (data datastore) i) 0))
 
       datastore)))
 
-(defun destroy-datastore (datastore)
-  (when (native-data datastore)
-    (static-vectors:free-static-vector (native-data datastore))))
+(defmethod destroy-datastore (ds)
+  (setf (data ds) NIL))
+
+(defmethod destroy-datastore ((ds native-datastore))
+  (when (data ds)
+    (static-vectors:free-static-vector (data ds))
+    (setf (data ds) NIL)))
 
 (defun compute-attr-alignment (attr named-layout)
   ;; attr is a defstruct of the attr from the attr-set
@@ -427,7 +440,7 @@ IN-SVEC."
   (error "attribute-descriptors for :block are unimplemented"))
 
 
-(defmethod attr-ref ((ds datastore) name index &rest components)
+(defmethod attr-ref ((ds native-datastore) name index &rest components)
   ;; 1. Find the attribute descriptor for NAME.
   (let ((attr-desc (gethash name (descriptors ds))))
 
@@ -453,7 +466,7 @@ IN-SVEC."
            ;; B. Extract the components
            (sv/unsigned-byte->vec (attr-type (attr attr-desc))
                                   num-components
-                                  (native-data ds)
+                                  (data ds)
                                   attr-start-byte-idx
                                   :out-vec result)
            result))
@@ -463,7 +476,8 @@ IN-SVEC."
 
 
 
-(defmethod (setf attr-ref) (comp-vec (ds datastore) name index &rest components)
+(defmethod (setf attr-ref) (comp-vec (ds native-datastore) name index
+                            &rest components)
   ;; 1. Find the attribute descriptor for NAME.
   (let ((attr-desc (gethash name (descriptors ds))))
 
@@ -486,7 +500,7 @@ IN-SVEC."
 
            ;; B. Insert the components
            (vec->sv/unsigned-byte (attr-type (attr attr-desc))
-                                  (native-data ds)
+                                  (data ds)
                                   attr-start-byte-idx
                                   comp-vec
                                   0
@@ -501,7 +515,7 @@ IN-SVEC."
 
 
 (defun test-1 (&optional (datastore-name 'vertices))
-  (let ((ds (make-datastore datastore-name (doit))))
+  (let ((ds (make-native-datastore datastore-name (doit))))
     (setf (attr-ref ds 'position 0) #(1.0 2.0 3.0))
     (setf (attr-ref ds 'normal 0) #(4.0 5.0 6.0))
     (setf (attr-ref ds 'uv 0) #(22 33 44))
