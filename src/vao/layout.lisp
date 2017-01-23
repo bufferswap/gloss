@@ -78,7 +78,7 @@
   (gethash datastore-name (layouts layout-set)))
 
 (defun doit ()
-  (let ((attr-set (make-attribute-set '(position :count 3)
+  (let ((attr-set (make-attribute-set '(position :count 3 :accessors (x y z))
                                       '(normal :count 3 :accessors (nx ny nz))
                                       '(uv :type :short :count 3)
                                       '(color :count 3)

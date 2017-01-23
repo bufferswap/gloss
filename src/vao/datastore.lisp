@@ -450,7 +450,9 @@ IN-SVEC."
        name (descriptors ds)))
 
     ;; 2. Find the start byte of the attribute at the specified index.
-    (let ((attr-read-byte-start (* index (aligned-byte-length attr-desc))))
+    (let ((attr-read-byte-start (* index (aligned-byte-length attr-desc)))
+          (attr-start-byte-idx (+ (offset attr-desc)
+                                  (* index (stride attr-desc)))))
 
       ;; 3. Analyze components, and return the required quantity.
       (cond
@@ -458,9 +460,6 @@ IN-SVEC."
          ;; A. No components specified, return all attribute components as
          ;; a cl array.
          (let* ((num-components (attr-count (attr attr-desc)))
-                (attr-start-byte-idx
-                 (+ (offset attr-desc)
-                    (* index (stride attr-desc))))
                 (result (make-array num-components)))
 
            ;; B. Extract the components
@@ -471,8 +470,30 @@ IN-SVEC."
                                   :out-vec result)
            result))
 
-        (t
-         (error "attr-ref: not implemented yet"))))))
+        (components
+         ;; B. There are specific components being referenced.
+         (let ((result (make-array (length components) :initial-element 0)))
+
+           ;; Store the components in the order specified into the result.
+           (loop
+              :for component :in components
+              :for result-write-idx :by 1 :do
+              (let ((component-index
+                     (if (numberp component)
+                         component
+                         (position component
+                                   (attr-accessors (attr attr-desc))))))
+
+                (sv/unsigned-byte->vec
+                 (attr-type (attr attr-desc))
+                 1 ;; extract them one at a time since they may not be contig.
+                 (data ds)
+                 (+ attr-start-byte-idx
+                    (* component-index
+                       (gl-type->byte-size (attr-type (attr attr-desc)))))
+                 :out-vec result
+                 :write-elem-index result-write-idx)))
+           result))))))
 
 
 
@@ -509,6 +530,13 @@ IN-SVEC."
            ;; Don't have a good return value here...
            (attr-count (attr attr-desc))))
 
+        (components
+         ;; B. There are specific components being referenced.
+
+         ;; TODO! Implement me!
+
+         nil)
+
         (t
          (error "setf attr-ref: not implemented yet"))))))
 
@@ -522,6 +550,14 @@ IN-SVEC."
     (format t "position[0]: ~A~%" (attr-ref ds 'position 0))
     (format t "normal[0]: ~A~%" (attr-ref ds 'normal 0))
     (format t "uv[0]: ~A~%" (attr-ref ds 'uv 0))
-    (inspect ds)
+    (loop
+       :for i :from 0 :below 3
+       :for acc :in '(x y z) :do
+       (format t "position[0][~A]: ~A~%" i (attr-ref ds 'position 0 i))
+       (format t "position[0][~A]: ~A~%" acc (attr-ref ds 'position 0 acc)))
+    (format t "position[0][x,y]: ~A~%" (attr-ref ds 'position 0 'x 'y))
+    (format t "position[0][y,z]: ~A~%" (attr-ref ds 'position 0 'y 'z))
+    (format t "position[0][x,y,y]: ~A~%" (attr-ref ds 'position 0 'x 'y 'y))
+    ;;(inspect ds)
 
     (destroy-datastore ds)))
