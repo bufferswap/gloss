@@ -532,13 +532,29 @@ IN-SVEC."
 
         (components
          ;; B. There are specific components being referenced.
+         ;; Store the components in the order specified into the result.
+         (loop
+            :for component :in components
+            :for read-idx :by 1 :do
+            (let* ((component-index
+                    (if (numberp component)
+                        component
+                        (position component
+                                  (attr-accessors (attr attr-desc)))))
+                   (component-offset
+                    (nth component-index
+			 (attr-component-offsets (attr attr-desc)))))
 
-         ;; TODO! Implement me!
+              (vec->sv/unsigned-byte
+               (attr-type (attr attr-desc))
+               (data ds)
+               (+ attr-start-byte-idx component-offset)
+               comp-vec
+               read-idx
+               1)))
 
-         nil)
-
-        (t
-         (error "setf attr-ref: not implemented yet"))))))
+         ;; Don't have a good return value here.
+         (length components))))))
 
 
 
@@ -558,6 +574,29 @@ IN-SVEC."
     (format t "position[0][x,y]: ~A~%" (attr-ref ds 'position 0 'x 'y))
     (format t "position[0][y,z]: ~A~%" (attr-ref ds 'position 0 'y 'z))
     (format t "position[0][x,y,y]: ~A~%" (attr-ref ds 'position 0 'x 'y 'y))
+
+    (format t "Component write test.~%")
+    (setf (attr-ref ds 'position 0 0) #(42.0))
+    (setf (attr-ref ds 'position 0 1) #(43.0))
+    (setf (attr-ref ds 'position 0 2) #(44.0))
+    (format t "position[0]: ~A~%" (attr-ref ds 'position 0))
+    (setf (attr-ref ds 'position 0 'x) #(45.0))
+    (setf (attr-ref ds 'position 0 'y) #(46.0))
+    (setf (attr-ref ds 'position 0 'z) #(47.0))
+    (format t "position[0]: ~A~%" (attr-ref ds 'position 0))
+    (setf (attr-ref ds 'position 0 0 1) #(48.0 49.0))
+    (format t "position[0]: ~A~%" (attr-ref ds 'position 0))
+    (setf (attr-ref ds 'position 0 0 2) #(50.0 51.0))
+    (format t "position[0]: ~A~%" (attr-ref ds 'position 0))
+    (setf (attr-ref ds 'position 0 0 1 2) #(50.0 51.0 52))
+    (format t "position[0]: ~A~%" (attr-ref ds 'position 0))
+    (setf (attr-ref ds 'position 0 'x 'y) #(100.0 101.0))
+    (format t "position[0]: ~A~%" (attr-ref ds 'position 0))
+    (setf (attr-ref ds 'position 0 'x 'z) #(102.0 103.0))
+    (format t "position[0]: ~A~%" (attr-ref ds 'position 0))
+    (setf (attr-ref ds 'position 0 'x 'y 'z) #(400.0 401.0 402.0))
+    (format t "position[0]: ~A~%" (attr-ref ds 'position 0))
+
     ;;(inspect ds)
 
     (destroy-datastore ds)))
