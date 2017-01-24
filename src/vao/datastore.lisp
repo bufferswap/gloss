@@ -508,16 +508,16 @@ IN-SVEC."
        name (descriptors ds)))
 
     ;; 2. Find the start byte of the attribute at the specified index.
-    (let ((attr-read-byte-start (* index (aligned-byte-length attr-desc))))
+    (let ((attr-read-byte-start (* index (aligned-byte-length attr-desc)))
+          (attr-start-byte-idx
+           (+ (offset attr-desc)
+              (* index (stride attr-desc)))))
 
       ;; 3. Analyze components, so we know what we're going to set.
       (cond
         ((null components)
          ;; A. No components specified, we're setting all components.
-         (let* ((num-components (attr-count (attr attr-desc)))
-                (attr-start-byte-idx
-                 (+ (offset attr-desc)
-                    (* index (stride attr-desc)))))
+         (let* ((num-components (attr-count (attr attr-desc))))
 
            ;; B. Insert the components
            (vec->sv/unsigned-byte (attr-type (attr attr-desc))
