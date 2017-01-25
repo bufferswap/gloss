@@ -87,7 +87,12 @@
    ;; a native-attribute-descriptor structure.
    (%descriptors :initarg :descriptors
                  :initform (make-hash-table)
-                 :accessor descriptors)))
+                 :accessor descriptors)
+   ;; Is this datastore appendable?
+   (%append-p :initarg :append-p
+              :initform NIL
+              :accessor append-p)
+   ))
 
 ;; This derived type of datastore has methods on it to understand the
 ;; fact that this type represents binary level attribute layouts in
@@ -314,10 +319,9 @@ IN-SVEC."
 ;; the definition of the datastore-name whose data type is
 ;; always unsigned-byte.
 (defun make-native-datastore (datastore-name layout-set
-                              &key (num-attrs 4)
-                                (resize (lambda (curr-num-attrs)
-                                          (+ curr-num-attrs 4))))
-  (let ((datastore (make-instance 'native-datastore))
+                              &key (size 4) (append-p NIL))
+  (let ((datastore
+         (make-instance 'native-datastore :size size :append-p append-p))
         (named-layout (lookup-named-layout datastore-name layout-set))
         (attr-set (attribute-set layout-set)))
 
@@ -333,20 +337,21 @@ IN-SVEC."
 
     ;; 2. Allocate the native array.
     (let ((data-size-in-bytes
-           (* num-attrs
+           (* (size datastore)
               (loop
                  :for d :being :the :hash-values :in (descriptors datastore)
                  :summing (aligned-byte-length d)))))
       (format t "Allocating data :unsigned-byte size of: ~A~%"
               data-size-in-bytes)
 
+      ;; 3. Fix up rest of datastore object.
       (setf (data-type datastore) :unsigned-byte ;; the GL type...
 
             (data datastore)
             (allocate-gl-typed-static-vector data-size-in-bytes
                                              (data-type datastore)))
 
-      ;; Clear it all out, too.
+      ;; 4. Zero out native data store.
       (loop :for i :below data-size-in-bytes :do
          (setf (aref (data datastore) i) 0))
 
@@ -436,9 +441,46 @@ IN-SVEC."
     attribute-desc-table))
 
 
+;; If the data store is NOT appendable, then this can work easily. If it is
+;; appendable, then I need possible to store the data into temporary arrays
+;; until such time as it is committed to the GPU.
 (defmethod gen-attribute-descriptors ((kind (eql :block)) named-layout attr-set)
   (error "attribute-descriptors for :block are unimplemented"))
 
+;; Resize a native data store and ensure the new data is properly maintained.
+(defmethod resize ((ds native-datastore))
+  (let* (;; byte size of the descriptors in toto
+         (attr-group-size (loop
+                             :for d :being :the :hash-values
+                             :in (descriptors ds)
+                             :summing (aligned-byte-length d)))
+         ;; Compute new number of attributes in the data store
+         ;; given the old size
+         (new-size (if (zerop (size ds))
+                       1024
+                       (ceiling (* (size ds) 1.5))))
+         ;; allocate the new array.
+         (new-data
+          (allocate-gl-typed-static-vector
+           (* new-size attr-group-size) (data-type ds))))
+
+    (format t "Resizing native data array from ~A attr groups to ~A attr groups.~%"
+            (size ds) new-size)
+
+    ;; copy the old data into the new data (as 'unsigned-byte).
+    (replace new-data (data ds))
+
+    ;; and zero out the rest (assumes 'unsigned-byte type)
+    (loop :for i :from (length (data ds)) :below (length new-data) :do
+       (setf (aref new-data i) 0))
+
+    ;; free the native array!
+    (static-vectors:free-static-vector (data ds))
+
+    ;; reset the object to the new stuff.
+    (setf (data ds) new-data
+          (size ds) new-size)
+    ds))
 
 (defmethod attr-ref ((ds native-datastore) name index &rest components)
   ;; 1. Find the attribute descriptor for NAME.
@@ -507,9 +549,30 @@ IN-SVEC."
        "SETF ATTR-REF: Non existent attrbute name: ~A in datastore descriptors ~A"
        name (descriptors ds)))
 
+    (when (and (eq index :end) (not (append-p ds)))
+      (error
+       "SETF ATTR-REF: Can't append to non-appendable datastore!"))
+
+    ;; 1.5 If appending, then ensure there is space for the write.
+    (when (and (append-p ds) (eq index :end))
+
+      ;; check to see if I need to resize
+      (when (>= (appending-index attr-desc) (size ds))
+        (resize ds))
+
+      ;; Then, convert the index into something meaninhful
+      (setf index (appending-index attr-desc))
+      ;; And get ready for the next append for this attribute
+      (incf (appending-index attr-desc)))
+
+    ;; ENsure we can actually perform this write.
+    (when (>= index (size ds))
+      (error
+       "SETF ATTR-REF: Out of bounds index ~A for datastore of size ~A~%"
+       index (size ds)))
+
     ;; 2. Find the start byte of the attribute at the specified index.
-    (let ((attr-read-byte-start (* index (aligned-byte-length attr-desc)))
-          (attr-start-byte-idx
+    (let ((attr-start-byte-idx
            (+ (offset attr-desc)
               (* index (stride attr-desc)))))
 
@@ -543,7 +606,7 @@ IN-SVEC."
                                   (attr-accessors (attr attr-desc)))))
                    (component-offset
                     (nth component-index
-			 (attr-component-offsets (attr attr-desc)))))
+                         (attr-component-offsets (attr attr-desc)))))
 
               (vec->sv/unsigned-byte
                (attr-type (attr attr-desc))
@@ -560,7 +623,7 @@ IN-SVEC."
 
 (defun test-1 (&optional (datastore-name 'vertices))
   (let ((ds (make-native-datastore datastore-name (doit))))
-    (setf (attr-ref ds 'position 0) #(1.0 2.0 3.0))
+    (setf (attr-ref ds 'position 0) #(1.0 1.0 1.0))
     (setf (attr-ref ds 'normal 0) #(4.0 5.0 6.0))
     (setf (attr-ref ds 'uv 0) #(22 33 44))
     (format t "position[0]: ~A~%" (attr-ref ds 'position 0))
@@ -597,6 +660,29 @@ IN-SVEC."
     (setf (attr-ref ds 'position 0 'x 'y 'z) #(400.0 401.0 402.0))
     (format t "position[0]: ~A~%" (attr-ref ds 'position 0))
 
-    ;;(inspect ds)
+    (inspect ds)
+
+    (destroy-datastore ds)))
+
+(defun test-2 (&optional (datastore-name 'vertices))
+  (let ((ds (make-native-datastore datastore-name (doit) :append-p T)))
+
+    ;; append some attributes.
+    (loop :for i :below 16
+       :for v = (vector 1.0 1.0 1.0) :do
+       (format t "Storing position at index ~A with value ~A~%" i v)
+       (setf (attr-ref ds 'position :end) v))
+
+    (loop :for i :below 8
+       :for v = (vector 1.0 1.0 1.0) :do
+       (format t "Storing normal at index ~A with value ~A~%" i v)
+       (setf (attr-ref ds 'normal :end) v))
+
+    (loop :for i :below 4
+       :for v = (vector 1 1 1) :do
+       (format t "Storing uv at index ~A with value ~A~%" i v)
+       (setf (attr-ref ds 'uv :end) v))
+
+    (inspect ds)
 
     (destroy-datastore ds)))
