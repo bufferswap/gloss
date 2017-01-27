@@ -148,7 +148,8 @@
 
 
 (defun test-1 ()
-  (let ((ds (make-native-datastore 'vertex (test-ds-layout) :size 4)))
+  (let* ((layout-set (test-ds-layout))
+         (ds (make-native-datastore 'vertex layout-set :size 4)))
     (setf (attr-ref ds 'position 0) #(1.0 1.0 1.0))
     (setf (attr-ref ds 'normal 0) #(4.0 5.0 6.0))
     (setf (attr-ref ds 'uv 0) #(0 0))
@@ -220,7 +221,5 @@
          (setf (attr-ref ds 'uv :end) #(0 0)
                (attr-ref ds 'uv :end) #(1 0)
                (attr-ref ds 'uv :end) #(0 1))))
-
-    (inspect ds)
 
     (destroy-datastore ds)))
