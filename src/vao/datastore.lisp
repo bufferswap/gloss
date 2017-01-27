@@ -336,7 +336,7 @@ IN-SVEC."
   (let ((datastore
          (make-instance 'native-datastore
                         :size size
-			:resizeable-p resizeable-p))
+                        :resizeable-p resizeable-p))
         (named-layout (lookup-named-layout datastore-name layout-set))
         (attr-set (attribute-set layout-set)))
 
@@ -699,9 +699,9 @@ IN-SVEC."
 
 (defun test-2 (&optional (datastore-name 'vertices))
   (let* ((num-tris 1024)
-	 (ds (make-native-datastore datastore-name (doit)
-				    :size (* num-tris 3)
-				    :resizeable-p NIL)))
+         (ds (make-native-datastore datastore-name (doit)
+                                    :size (* num-tris 3)
+                                    :resizeable-p NIL)))
 
     ;; Let's make some triangles in a 0.0 - 1.0 range with each vertex
     (loop :for i :below num-tris :do
