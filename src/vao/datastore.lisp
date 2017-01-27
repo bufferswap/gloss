@@ -33,7 +33,15 @@
    ;; What is the stride to the next attribute entry?
    (%stride :initarg :stride
             :initform 0
-            :accessor stride)))
+            :accessor stride)
+   ;; This is the attribute index into which we should start
+   ;; appending. This is always 1+ the maximum index the user may have
+   ;; setf an attribute into. Consequently, this is also considered the
+   ;; "length" of the datastore, which is the highest defined attribute
+   ;; (which could be less than or equal to the SIZE of the datastore).
+   (%appending-index :initarg :appending-index
+                     :initform 0
+                     :accessor appending-index)))
 
 ;; However, in the data representation of the attributes, we need more
 ;; specific information about exact byte layouts, byte lengths, and such,
@@ -52,11 +60,13 @@
    (%aligned-byte-length :initarg :aligned-byte-length
                          :initform NIL
                          :accessor aligned-byte-length)
-   ;; When appending, this is the attribute index into which we should
-   ;; start appending.
-   (%appending-index :initarg :appending-index
-                     :initform 0
-                     :accessor appending-index)))
+   ))
+
+(defmethod num-attrs ((attr-desc attribute-descriptor))
+  "Return the number of attributes that are considered defined by this
+ATTR-DESC. In practice this means one more than the highest index stored
+into the datastore with which this ATTR-DESC is associated."
+  (appending-index attr-desc))
 
 ;; A datastore is responsible for representing the layout of all attributes
 ;; in an array. The base data store class can represent CL arrays. This is
@@ -88,10 +98,11 @@
    (%descriptors :initarg :descriptors
                  :initform (make-hash-table)
                  :accessor descriptors)
-   ;; Is this datastore appendable?
-   (%append-p :initarg :append-p
-              :initform NIL
-              :accessor append-p)
+   ;; Is this datastore resizeable?
+   (%resizeable-p :initarg :resizeable-p
+                  :initform NIL
+                  ;; Once set in the constructor, this cannot be altered.
+                  :reader resizeable-p)
    ))
 
 ;; This derived type of datastore has methods on it to understand the
@@ -155,6 +166,8 @@ precision form of it. This is really a sign-extension operation."
   (static-vectors:make-static-vector
    len :element-type (gl-type->cl-type gl-type)))
 
+(defmethod coerce-harder (value gl-type-target)
+  (coerce value (gl-type->cl-type gl-type-target)))
 
 (defun vec->sv/unsigned-byte
     (gl-type out-svec write-byte-index in-vec read-element-index num-read-elems)
@@ -185,7 +198,7 @@ and the number of bytes written to OUT-SVEC."
        :below (+ read-element-index num-read-elems)
 
        ;; get the value we need, always convert.
-       :for value = (coerce (aref in-vec read-index) (gl-type->cl-type gl-type))
+       :for value = (coerce-harder (aref in-vec read-index) gl-type)
        ;; convert it to an unsigned int representation.
        :for converted-value = (funcall encoder value)
 
@@ -319,9 +332,11 @@ IN-SVEC."
 ;; the definition of the datastore-name whose data type is
 ;; always unsigned-byte.
 (defun make-native-datastore (datastore-name layout-set
-                              &key (size 4) (append-p NIL))
+                              &key (size 4) (resizeable-p NIL))
   (let ((datastore
-         (make-instance 'native-datastore :size size :append-p append-p))
+         (make-instance 'native-datastore
+                        :size size
+			:resizeable-p resizeable-p))
         (named-layout (lookup-named-layout datastore-name layout-set))
         (attr-set (attribute-set layout-set)))
 
@@ -549,27 +564,28 @@ IN-SVEC."
        "SETF ATTR-REF: Non existent attrbute name: ~A in datastore descriptors ~A"
        name (descriptors ds)))
 
-    (when (and (eq index :end) (not (append-p ds)))
-      (error
-       "SETF ATTR-REF: Can't append to non-appendable datastore!"))
-
-    ;; 1.5 If appending, then ensure there is space for the write.
-    (when (and (append-p ds) (eq index :end))
-
-      ;; check to see if I need to resize
+    ;; 1.5 If appending, then ensure we resize if need be and there is space.
+    (when (eq index :end)
+      ;; check to see if I need to resize, and if I can.
       (when (>= (appending-index attr-desc) (size ds))
-        (resize ds))
+        (if (resizeable-p ds)
+            (resize ds)
+            (error "SETF ATTR-REF: Attempting to resize a non-resizable datastore while appending to :end for attribute ~A" name)))
 
-      ;; Then, convert the index into something meaninhful
-      (setf index (appending-index attr-desc))
-      ;; And get ready for the next append for this attribute
-      (incf (appending-index attr-desc)))
+      ;; Then, convert the index into something meaningful
+      (setf index (appending-index attr-desc)))
 
-    ;; ENsure we can actually perform this write.
+    ;; Ensure we can actually perform this write.
     (when (>= index (size ds))
       (error
        "SETF ATTR-REF: Out of bounds index ~A for datastore of size ~A~%"
        index (size ds)))
+
+    ;; Now that we have an index, ensure the appending index is consistent
+    ;; with it. This will not update when we write into attributes less than
+    ;; the max we've ever written.
+    (when (>= index (appending-index attr-desc))
+      (setf (appending-index attr-desc) (1+ index)))
 
     ;; 2. Find the start byte of the attribute at the specified index.
     (let ((attr-start-byte-idx
@@ -664,25 +680,51 @@ IN-SVEC."
 
     (destroy-datastore ds)))
 
+(defun cross-product (u v)
+  "A simple cross product for U x V for use within the tests."
+  (vector (- (* (aref u 1) (aref v 2))
+             (* (aref u 2) (aref v 1)))
+
+          (- (* (aref u 2) (aref v 0))
+             (* (aref u 0) (aref v 2)))
+
+          (- (* (aref u 0) (aref v 1))
+             (* (aref u 1) (aref v 0)))))
+
+(defun vect (p0 p1)
+  "Construct a vector from P0 to P1."
+  (vector (- (aref p1 0) (aref p0 0))
+          (- (aref p1 1) (aref p0 1))
+          (- (aref p1 2) (aref p0 2))))
+
 (defun test-2 (&optional (datastore-name 'vertices))
-  (let ((ds (make-native-datastore datastore-name (doit) :append-p T)))
+  (let* ((num-tris 1024)
+	 (ds (make-native-datastore datastore-name (doit)
+				    :size (* num-tris 3)
+				    :resizeable-p NIL)))
 
-    ;; append some attributes.
-    (loop :for i :below 16
-       :for v = (vector 1.0 1.0 1.0) :do
-       (format t "Storing position at index ~A with value ~A~%" i v)
-       (setf (attr-ref ds 'position :end) v))
+    ;; Let's make some triangles in a 0.0 - 1.0 range with each vertex
+    (loop :for i :below num-tris :do
+       (let* ((p0 (vector (random 1.0) (random 1.0) (random 1.0)))
+              (p1 (vector (random 1.0) (random 1.0) (random 1.0)))
+              (p2 (vector (random 1.0) (random 1.0) (random 1.0)))
+              (u (vect p0 p1))
+              (v (vect p0 p2))
+              (uxv (cross-product u v)))
 
-    (loop :for i :below 8
-       :for v = (vector 1.0 1.0 1.0) :do
-       (format t "Storing normal at index ~A with value ~A~%" i v)
-       (setf (attr-ref ds 'normal :end) v))
+         ;; add in the verticies.
+         (setf (attr-ref ds 'position :end) p0
+               (attr-ref ds 'position :end) p1
+               (attr-ref ds 'position :end) p2)
 
-    (loop :for i :below 4
-       :for v = (vector 1 1 1) :do
-       (format t "Storing uv at index ~A with value ~A~%" i v)
-       (setf (attr-ref ds 'uv :end) v))
+         ;; add in the normals for each vertex.
+         (setf (attr-ref ds 'normal :end) uxv
+               (attr-ref ds 'normal :end) uxv
+               (attr-ref ds 'normal :end) uxv)
 
-    (inspect ds)
+         ;; add in the uv for each vertex
+         (setf (attr-ref ds 'uv :end) #(0 0 0)
+               (attr-ref ds 'uv :end) #(32767 0 0)
+               (attr-ref ds 'uv :end) #(0 32767 0))))
 
     (destroy-datastore ds)))
