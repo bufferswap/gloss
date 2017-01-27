@@ -194,7 +194,8 @@
 
 (defun test-2 ()
   (let* ((num-tris 1024)
-         (ds (make-native-datastore 'vertex (test-ds-layout)
+         (layout-set (test-ds-layout))
+         (ds (make-native-datastore 'vertex layout-set
                                     :size (* num-tris 3)
                                     :resizeable-p NIL)))
 
