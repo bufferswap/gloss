@@ -163,8 +163,9 @@ precision form of it. This is really a sign-extension operation."
 
 
 (defun allocate-gl-typed-static-vector (len gl-type)
-  (static-vectors:make-static-vector
-   len :element-type (gl-type->cl-type gl-type)))
+  (static-vectors:make-static-vector len
+                                     :element-type (gl-type->cl-type gl-type)
+                                     :initial-element 0))
 
 (defmethod coerce-harder (value gl-type-target)
   (coerce value (gl-type->cl-type gl-type-target)))
@@ -426,19 +427,18 @@ IN-SVEC."
     (format t "Resizing native data array from ~A attr groups to ~A attr groups.~%"
             (size ds) new-size)
 
-    ;; copy the old data into the new data (as 'unsigned-byte).
-    (replace new-data (data ds))
-
-    ;; and zero out the rest (assumes 'unsigned-byte type)
-    (loop :for i :from (length (data ds)) :below (length new-data) :do
-       (setf (aref new-data i) 0))
-
-    ;; free the native array!
-    (static-vectors:free-static-vector (data ds))
+    (unless (zerop (size ds))
+      ;; Copy the old data into the new data (as 'unsigned-byte).
+      ;; Allocation fills the array already with zero data, so we don't have
+      ;; to manage dealing with the unused places.
+      (replace new-data (data ds))
+      ;; free the native array!
+      (static-vectors:free-static-vector (data ds)))
 
     ;; reset the object to the new stuff.
     (setf (data ds) new-data
           (size ds) new-size)
+
     ds))
 
 (defmethod attr-ref ((ds native-datastore) name index &rest components)

@@ -132,12 +132,25 @@
 
       (static-vectors:free-static-vector sv))))
 
+(defun test-ds-layout ()
+  "Return a layout-set suitable for the datastore tests."
+  (let ((attr-set (make-attribute-set '(position :count 3 :accessors (px py pz))
+                                      '(normal :count 3 :accessors (nx ny nz))
+                                      '(uv :type :half-float :count 2 :accessors (uvx uvy uvz)))))
+    (make-layout-set
+     attr-set :triangles
+     '(((:data-format :interleave)
+        (:binding-target :array-buffer)
+        (:usage-hint :static-draw)
+        (:align T))
+       (vertex (position normal uv))))))
 
-(defun test-1 (&optional (datastore-name 'vertices))
-  (let ((ds (make-native-datastore datastore-name (doit))))
+
+(defun test-1 ()
+  (let ((ds (make-native-datastore 'vertex (test-ds-layout) :size 4)))
     (setf (attr-ref ds 'position 0) #(1.0 1.0 1.0))
     (setf (attr-ref ds 'normal 0) #(4.0 5.0 6.0))
-    (setf (attr-ref ds 'uv 0) #(22 33 44))
+    (setf (attr-ref ds 'uv 0) #(0 0))
     (format t "position[0]: ~A~%" (attr-ref ds 'position 0))
     (format t "normal[0]: ~A~%" (attr-ref ds 'normal 0))
     (format t "uv[0]: ~A~%" (attr-ref ds 'uv 0))
@@ -177,9 +190,9 @@
     (destroy-datastore ds)))
 
 
-(defun test-2 (&optional (datastore-name 'vertices))
+(defun test-2 ()
   (let* ((num-tris 1024)
-         (ds (make-native-datastore datastore-name (doit)
+         (ds (make-native-datastore 'vertex (test-ds-layout)
                                     :size (* num-tris 3)
                                     :resizeable-p NIL)))
 
@@ -203,8 +216,10 @@
                (attr-ref ds 'normal :end) uxv)
 
          ;; add in the uv for each vertex
-         (setf (attr-ref ds 'uv :end) #(0 0 0)
-               (attr-ref ds 'uv :end) #(32767 0 0)
-               (attr-ref ds 'uv :end) #(0 32767 0))))
+         (setf (attr-ref ds 'uv :end) #(0 0)
+               (attr-ref ds 'uv :end) #(1 0)
+               (attr-ref ds 'uv :end) #(0 1))))
+
+    (inspect ds)
 
     (destroy-datastore ds)))
