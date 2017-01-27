@@ -133,7 +133,7 @@
       (static-vectors:free-static-vector sv))))
 
 (defun test-ds-layout ()
-  "Return a layout-set suitable for the datastore tests."
+  "Return a layout-set filled with attributes suitable for the datastore tests."
   (let ((attr-set (make-attribute-set
                    '(position :count 3 :accessors (px py pz))
                    '(normal :count 3 :accessors (nx ny nz))
