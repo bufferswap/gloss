@@ -134,9 +134,10 @@
 
 (defun test-ds-layout ()
   "Return a layout-set suitable for the datastore tests."
-  (let ((attr-set (make-attribute-set '(position :count 3 :accessors (px py pz))
-                                      '(normal :count 3 :accessors (nx ny nz))
-                                      '(uv :type :half-float :count 2 :accessors (uvx uvy uvz)))))
+  (let ((attr-set (make-attribute-set
+                   '(position :count 3 :accessors (px py pz))
+                   '(normal :count 3 :accessors (nx ny nz))
+                   '(uv :type :half-float :count 2 :accessors (uvx uvy uvz)))))
     (make-layout-set
      attr-set :triangles
      '(((:data-format :interleave)
