@@ -140,11 +140,26 @@
                    '(uv :type :half-float :count 2 :accessors (uvx uvy uvz)))))
     (make-layout-set
      attr-set :triangles
+     ;; Note: Datastore names must be unique.
      '(((:data-format :interleave)
         (:binding-target :array-buffer)
         (:usage-hint :static-draw)
         (:align T))
-       (vertex (position normal uv))))))
+       (vertex (position normal uv)))
+
+     '(((:data-format :separate)
+        (:binding-target :array-buffer)
+        (:usage-hint :static-draw)
+        (:align T))
+       (svertex (position))
+       (normal (normal))
+       (uv (uv)))
+
+     '(((:data-format :block)
+        (:binding-target :array-buffer)
+        (:usage-hint :static-draw)
+        (:align T))
+       (bvertex (position normal uv))))))
 
 
 (defun test-1 ()
