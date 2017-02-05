@@ -73,6 +73,14 @@ into the datastore with which this ATTR-DESC is associated."
 ;; used to manage incoming data arrays.
 (defclass datastore ()
   (
+   ;; This is the name of the named-layout in the layout-set for which
+   ;; this data store was constructed.
+   (%name :initarg :name
+          :initform NIL
+          :accessor name)
+   (%layout-set :initarg :layout-set
+                :initform NIL
+                :accessor layout-set)
    ;; This is how many template group instances may be stored in the native
    ;; data array.
    ;;
@@ -84,11 +92,12 @@ into the datastore with which this ATTR-DESC is associated."
    (%size :initarg :size
           :initform 0
           :accessor size)
-   ;; The actual static-vector storage for the attribute data.
+
+   ;; The actual storage for the attribute data. Is often a static-vectors.
    (%data :initarg :data
           :initform NIL
           :accessor data)
-   ;; The raw type of the static-vector. We sometimes need to know this before
+   ;; The raw type of the data vector. We sometimes need to know this before
    ;; having an actual data array.
    (%data-type :initarg :data-type
                :initform NIL
@@ -111,6 +120,11 @@ into the datastore with which this ATTR-DESC is associated."
 ;; suitable for upload to the GPU.
 (defclass native-datastore (datastore) ())
 
+(defmethod named-layout ((ds datastore))
+  (lookup-named-layout (name ds) (layout-set ds)))
+
+(defmethod attr-set ((ds datastore))
+  (attribute-set (layout-set ds)))
 
 (defun align-up-to (value power)
   "Align the value up to the next (expt 2 POWER) multiple if required."
@@ -165,6 +179,10 @@ precision form of it. This is really a sign-extension operation."
 (defun allocate-gl-typed-static-vector (len gl-type)
   (static-vectors:make-static-vector len
                                      :element-type (gl-type->cl-type gl-type)
+                                     ;; This initial-element might be wrong
+                                     ;; depending upon types, maybe have to
+                                     ;; augment this a little bit to produce
+                                     ;; the correct value based upon gl-type.
                                      :initial-element 0))
 
 (defmethod coerce-harder (value gl-type-target)
@@ -278,12 +296,13 @@ IN-SVEC."
 ;; always unsigned-byte.
 (defun make-native-datastore (datastore-name layout-set
                               &key (size 4) (resizeable-p NIL))
-  (let ((datastore
-         (make-instance 'native-datastore
-                        :size size
-                        :resizeable-p resizeable-p))
-        (named-layout (lookup-named-layout datastore-name layout-set))
-        (attr-set (attribute-set layout-set)))
+  (let* ((datastore (make-instance 'native-datastore
+                                   :name datastore-name
+                                   :layout-set layout-set
+                                   :size size
+                                   :resizeable-p resizeable-p))
+         (named-layout (named-layout datastore))
+         (attr-set (attr-set datastore)))
 
     ;; check what I'm about to work with...
     (format t "named-datastore ~A is ~A~%" datastore-name named-layout)
@@ -291,11 +310,16 @@ IN-SVEC."
        (format t "Attribute: ~A -> ~A~%" attr (lookup-attribute attr attr-set)))
 
     ;; 1. Create the attribute-descriptors for this datastore.
-    (setf (descriptors datastore)
-          (gen-attribute-descriptors (data-format (properties named-layout))
-                                     named-layout attr-set))
+    (gen-attribute-descriptors datastore (data-format
+                                          (properties named-layout)))
 
+    ;; XXX TODO: Lift this to a generic function that does the right thing
+    ;; given the data-format. :interleave and :separate are basically
+    ;; identical, but :block is very different.
+    ;;
     ;; 2. Allocate the native array.
+    ;; (gen-data-storage datastore (data-format (properties named-layout)))
+
     (let ((data-size-in-bytes
            (* (size datastore)
               (loop
@@ -314,6 +338,10 @@ IN-SVEC."
       ;; 4. Zero out native data store.
       (loop :for i :below data-size-in-bytes :do
          (setf (aref (data datastore) i) 0))
+
+      ;; Put above into gen-data-storage method.
+
+
 
       datastore)))
 
@@ -336,13 +364,15 @@ IN-SVEC."
         ;; assume alignment value of 1, so keep raw byte length
         attr-byte-len)))
 
-(defgeneric gen-attribute-descriptors (kind named-layout attr-set))
+(defgeneric gen-attribute-descriptors (ds kind))
 
-(defmethod gen-attribute-descriptors ((kind (eql :separate))
-                                      named-layout attr-set)
+(defmethod gen-attribute-descriptors ((ds native-datastore)
+                                      (kind (eql :separate)))
   ;; We only need 1 attribute-descriptor for a :separate datastore since there
   ;; is only 1 attribute to ever worry about.
-  (let* ((attribute-desc-table (make-hash-table))
+  (let* ((named-layout (named-layout ds))
+         (attr-set (attr-set ds))
+         (attribute-desc-table (make-hash-table))
          (attr-name (first (template named-layout)))
          (attr (lookup-attribute attr-name attr-set))
          (attr-byte-len (attribute-size attr))
@@ -357,13 +387,15 @@ IN-SVEC."
                          :offset 0
                          :stride aligned-attr-byte-len))
 
-    ;; return the hash table.
-    attribute-desc-table))
+    ;; Then, set the hash table into the datastore.
+    (setf (descriptors ds) attribute-desc-table)))
 
 
-(defmethod gen-attribute-descriptors ((kind (eql :interleave))
-                                      named-layout attr-set)
-  (let* ((attribute-desc-table (make-hash-table))
+(defmethod gen-attribute-descriptors ((ds native-datastore)
+                                      (kind (eql :interleave)))
+  (let* ((named-layout (named-layout ds))
+         (attr-set (attr-set ds))
+         (attribute-desc-table (make-hash-table))
          ;; 1. assemble the attribute-descriptors in order in the template
          ;; with any easy stuff we can calculate right away.
          (descriptors
@@ -398,17 +430,46 @@ IN-SVEC."
        :for attr-name :in (template named-layout) :do
        (setf (gethash attr-name attribute-desc-table) desc))
 
-    attribute-desc-table))
+    ;; Then, set the hash table into the datastore.
+    (setf (descriptors ds) attribute-desc-table)))
 
 
-;; If the data store is NOT appendable, then this can work easily. If it is
-;; appendable, then I need possible to store the data into temporary arrays
-;; until such time as it is committed to the GPU.
-(defmethod gen-attribute-descriptors ((kind (eql :block)) named-layout attr-set)
-  (error "attribute-descriptors for :block are unimplemented"))
+;; We do different things depending if the datastore is resizeable.
+(defmethod gen-attribute-descriptors ((ds native-datastore)
+                                      (kind (eql :block)))
+
+  (let* ((named-layout (named-layout ds))
+         (attr-set (attr-set ds))
+         (attribute-desc-table (make-hash-table))
+         ;; 1. assemble the attribute-descriptors in order in the template
+         ;; with any easy stuff we can calculate right away.
+         (descriptors
+          (mapcar (lambda (attr-name)
+                    (let* ((attr (lookup-attribute attr-name attr-set)))
+                      (make-instance
+                       'native-attribute-descriptor
+                       :attr attr
+                       :raw-byte-length (attribute-size attr)
+                       :aligned-byte-length (compute-attr-alignment
+                                             attr
+                                             named-layout))))
+
+                  (template named-layout))))
+
+    (cond
+      ((resizeable-p ds)
+       nil)
+      (t
+       nil))
+
+    ;; Then, set the hash table into the datastore.
+    (setf (descriptors ds) attribute-desc-table)))
+
 
 ;; Resize a native data store and ensure the new data is properly maintained.
 (defmethod resize ((ds native-datastore))
+  ;; XXX TODO Fix me for resizing when in a rezizeable :block situation!!!!
+
   (let* (;; byte size of the descriptors in toto
          (attr-group-size (loop
                              :for d :being :the :hash-values
@@ -451,8 +512,7 @@ IN-SVEC."
        name (descriptors ds)))
 
     ;; 2. Find the start byte of the attribute at the specified index.
-    (let ((attr-read-byte-start (* index (aligned-byte-length attr-desc)))
-          (attr-start-byte-idx (+ (offset attr-desc)
+    (let ((attr-start-byte-idx (+ (offset attr-desc)
                                   (* index (stride attr-desc)))))
 
       ;; 3. Analyze components, and return the required quantity.
