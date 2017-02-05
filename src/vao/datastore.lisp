@@ -62,10 +62,13 @@
                          :accessor aligned-byte-length)
    ))
 
-(defmethod num-attrs ((attr-desc attribute-descriptor))
-  "Return the number of attributes that are considered defined by this
+(defgeneric num-attrs (attr-desc)
+  (:documentation
+   "Return the number of attributes that are considered defined by this
 ATTR-DESC. In practice this means one more than the highest index stored
-into the datastore with which this ATTR-DESC is associated."
+into the datastore with which this ATTR-DESC is associated."))
+
+(defmethod num-attrs ((attr-desc attribute-descriptor))
   (appending-index attr-desc))
 
 ;; A datastore is responsible for representing the layout of all attributes
@@ -110,7 +113,11 @@ into the datastore with which this ATTR-DESC is associated."
    ;; Is this datastore resizeable?
    (%resizeable-p :initarg :resizeable-p
                   :initform NIL
-                  ;; Once set in the constructor, this cannot be altered.
+                  ;; The datastore can be changed to and from being resizeable,
+                  ;; however, in doing so there may be serious performance
+                  ;; consequences. The setter for resizeable-p must be hand
+                  ;; written since a pile of work has to happen in that
+                  ;; method.
                   :reader resizeable-p)
    ))
 
@@ -120,11 +127,19 @@ into the datastore with which this ATTR-DESC is associated."
 ;; suitable for upload to the GPU.
 (defclass native-datastore (datastore) ())
 
+(defgeneric named-layout (ds)
+  (:documentation "Get the named-layout datastore DS is referencing."))
+
 (defmethod named-layout ((ds datastore))
   (lookup-named-layout (name ds) (layout-set ds)))
 
+(defgeneric attr-set (ds)
+  (:documentation "Get the attribute-set datastore DS is referenceing."))
+
 (defmethod attr-set ((ds datastore))
   (attribute-set (layout-set ds)))
+
+
 
 (defun align-up-to (value power)
   "Align the value up to the next (expt 2 POWER) multiple if required."
@@ -132,9 +147,13 @@ into the datastore with which this ATTR-DESC is associated."
     (logand (+ value (1- align)) (lognot (1- align)))))
 
 (defun next-multiple (value multiple)
+  "Return the integer VALUE is it is easily divisible by MULTIPLE, or the next
+highest integer that is divisible by MULTIPLE."
   (* (ceiling (/ value multiple)) multiple))
 
 (defun gl-type->cl-type (gl-type)
+  "Convert the GL-TYPE, example :unsigned-byte, to an appropriate Common Lisp
+type, such as '(integer 0 255), and return the type specifier form."
   (ecase gl-type
     (:float 'single-float)
     (:byte '(integer -128 127))
@@ -149,6 +168,8 @@ into the datastore with which this ATTR-DESC is associated."
     (:double 'double-float)))
 
 (defun gl-type->byte-size (gl-type)
+  "Following the definitions in the OpenGL Standard, return a byte size for
+each GL-TYPE."
   (ecase gl-type
     (:unsigned-byte 1)
     (:byte 1)
@@ -184,12 +205,25 @@ precision form of it. This is really a sign-extension operation."
           val))
 
 (defun allocate-gl-typed-static-vector (len gl-type)
+  "Create a static-vectors array of the required length LEN and GL-TYPE.
+The returned vector's element typ is actually the result of calling
+GL-TYPE->CL-TYPE on GL-TYPE."
   (static-vectors:make-static-vector
    len
    :element-type (gl-type->cl-type gl-type)
    :initial-element (zero-wrt-gl-type gl-type)))
 
+
+(defgeneric coerce-harder (value fl-type-target)
+  (:documentation
+   "Coerce the VALUE to the GL-TYPE-TARGET. In the case of VALUE being
+a floating point number and the GL-TYPE-TARGET specifying a integral
+quantity, this can lose precision."))
+
+
 (defmethod coerce-harder (value gl-type-target)
+  ;; TODO: Complete me by implementing all of the specialized
+  ;; permutations. Especially float -> integer conversion.
   (coerce value (gl-type->cl-type gl-type-target)))
 
 (defun vec->sv/unsigned-byte
@@ -294,11 +328,16 @@ IN-SVEC."
        (setf (aref out-vec write-idx) (funcall decoder value)))
     out-vec))
 
+
+
 ;; TODO: This returns a datastore to store the data appropriate for
 ;; the definition of the datastore-name whose data type is
 ;; always unsigned-byte.
 (defun make-native-datastore (datastore-name layout-set
-                              &key (size 4) (resizeable-p NIL))
+                              &key (size 1024) (resizeable-p NIL))
+  "Return a datastore which will store attribute data found in LAYOUT-SET
+and identified by DATASTORE-NAME. The keyword arguments :SIZE defaults to 1024
+and :RESIZEABLE-P defaults to NIL."
   (let* ((datastore (make-instance 'native-datastore
                                    :name datastore-name
                                    :layout-set layout-set
@@ -321,6 +360,14 @@ IN-SVEC."
 
     datastore))
 
+
+
+
+
+(defgeneric destroy-datastore (ds)
+  (:documentation "Manually free any arrays (if appropriate) for
+datastore DS."))
+
 (defmethod destroy-datastore (ds)
   (setf (data ds) NIL))
 
@@ -328,6 +375,9 @@ IN-SVEC."
   (when (data ds)
     (static-vectors:free-static-vector (data ds))
     (setf (data ds) NIL)))
+
+
+
 
 
 
@@ -495,7 +545,6 @@ storage."))
     ;; Then, set the hash table into the datastore.
     (setf (descriptors ds) attribute-desc-table)))
 
-
 ;; We do different things depending if the datastore is resizeable.
 (defmethod gen-attribute-descriptors ((ds native-datastore)
                                       (kind (eql :block)))
@@ -528,7 +577,12 @@ storage."))
     (setf (descriptors ds) attribute-desc-table)))
 
 
-;; Resize a native data store and ensure the new data is properly maintained.
+
+
+(defgeneric resize (ds)
+  (:documentation "Resize a data store and ensure the new data is
+properly maintained."))
+
 (defmethod resize ((ds native-datastore))
   ;; XXX TODO Fix me for resizing when in a rezizeable :block situation!!!!
 
@@ -563,6 +617,14 @@ storage."))
           (size ds) new-size)
 
     ds))
+
+
+
+
+
+(defgeneric attr-ref (ds name index &rest components)
+  (:documentation "Return the data for attribute NAME at INDEX in the datastore DS. If COMPONENTS is supplied, then produce a swizzle as desired. Always
+returns a newly allocated vector."))
 
 (defmethod attr-ref ((ds native-datastore) name index &rest components)
   ;; 1. Find the attribute descriptor for NAME.
@@ -619,6 +681,8 @@ storage."))
            result))))))
 
 
+(defgeneric (setf attr-ref) (comp-vec ds name index &rest components)
+  (:documentation "DOCUMENT ME."))
 
 (defmethod (setf attr-ref) (comp-vec (ds native-datastore) name index
                             &rest components)
