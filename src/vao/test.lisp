@@ -249,8 +249,8 @@
 
     (loop :for i :below (* num-tris 3) :do
        (setf (attr-ref ds 'position :end) #(1 1 1))
-       (setf (attr-ref ds 'normal :end) #(1 1 1))
-       (setf (attr-ref ds 'uv :end) #(1 1)))
+       (setf (attr-ref ds 'normal :end) #(2 2 2))
+       (setf (attr-ref ds 'uv :end) #(10 10)))
 
 
     (inspect ds)
