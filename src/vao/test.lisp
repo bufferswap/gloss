@@ -239,3 +239,20 @@
                (attr-ref ds 'uv :end) #(0 1))))
 
     (destroy-datastore ds)))
+
+(defun test-3 ()
+  (let* ((num-tris 9)
+         (layout-set (test-ds-layout))
+         (ds (make-native-datastore 'bvertex layout-set
+                                    :size (* num-tris 3)
+                                    :resizeable-p T)))
+
+    (loop :for i :below (* num-tris 3) :do
+       (setf (attr-ref ds 'position :end) #(1 1 1))
+       (setf (attr-ref ds 'normal :end) #(1 1 1))
+       (setf (attr-ref ds 'uv :end) #(1 1)))
+
+
+    (inspect ds)
+
+    (destroy-datastore ds)))

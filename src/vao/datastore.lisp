@@ -1,5 +1,12 @@
 (in-package :gloss.vao)
 
+;; TODO: Implement a post-process phase just when uploading the data
+;; array to the GPU which does things like compact the :block
+;; attributes to be continguous, etc, etc, etc. (and then uncompacts it).
+;; This function is probably in the gl-buffer-data uploader for the datastore.
+
+
+
 ;;;; NOTE: The gl-type :fixed is not well supported in this
 ;;;; library. In order to support it properly, conversion functions to
 ;;;; and from 16.16 fixed point have to be created. There is a "fixed"
@@ -218,13 +225,13 @@ GL-TYPE->CL-TYPE on GL-TYPE."
   (:documentation
    "Coerce the VALUE to the GL-TYPE-TARGET. In the case of VALUE being
 a floating point number and the GL-TYPE-TARGET specifying a integral
-quantity, this can lose precision."))
-
+quantity, this can lose precision. Note, that if you're coercing a value
+that is larger than the type to which you're coercing, you will clamp to
+the edge values of the type in question."))
 
 (defmethod coerce-harder (value gl-type-target)
-  ;; TODO: Complete me by implementing all of the specialized
-  ;; permutations. Especially float -> integer conversion.
   (coerce value (gl-type->cl-type gl-type-target)))
+
 
 (defun vec->sv/unsigned-byte
     (gl-type out-svec write-byte-index in-vec read-element-index num-read-elems)
@@ -403,6 +410,9 @@ the end of the ATTR upto the aligned size."
 
 
 
+;; TODO: I need to inspect this, but it might always be the same for all three
+;; since it appears not to matter the arragement of the attributes, the total
+;; size looks to always be the same.
 
 (defgeneric compute-data-size-in-bytes (ds kind)
   (:documentation "Compute the total size, in bytes, of a native data array
@@ -427,40 +437,8 @@ which will be used to store (possibly) aligned attribute data."))
 
 (defmethod compute-data-size-in-bytes ((ds native-datastore)
                                        (kind (eql :block)))
-  (error "compute-data-size-in-bytes :block not implemented!"))
-
-
-
-
-
-(defgeneric gen-data-storage (ds kind)
-  (:documentation "Determine what underlying type and how big to allocate
-the storage for datastroe DS of KIND. Often the storage will be a
-static-vectors type, but it can be other more complex things too, depending
-upon the circumstances."))
-
-
-(defmethod gen-data-storage ((ds native-datastore) (kind (eql :interleave)))
-  (let ((data-size-in-bytes (compute-data-size-in-bytes ds kind)))
-
-    (format t "Allocating data :unsigned-byte size of: ~A~%"
-            data-size-in-bytes)
-
-    ;; 3. Fix up rest of datastore object.
-    (setf (data-type ds) :unsigned-byte ;; the GL type...
-
-          (data ds) (allocate-gl-typed-static-vector data-size-in-bytes
-                                                     (data-type ds))))
-  ds)
-
-(defmethod gen-data-storage ((ds native-datastore) (kind (eql :separate)))
-  ;; This is the same algorithm as :interelave for this function.
-  ;; But there is only a single attribute in the attribute group.
-  (gen-data-storage ds :interleave))
-
-(defmethod gen-data-storage ((ds native-datastore) (kind (eql :block)))
-  (error "gen-data-storage for :block unimplemented"))
-
+  ;; This is the same algorithm as for :interleave for this function.
+  (compute-data-size-in-bytes ds :interleave))
 
 
 
@@ -561,20 +539,81 @@ storage."))
                        'native-attribute-descriptor
                        :attr attr
                        :raw-byte-length (attribute-size attr)
+                       :stride (attribute-size attr)
                        :aligned-byte-length (compute-attr-alignment
                                              attr
                                              named-layout))))
 
                   (template named-layout))))
 
-    (cond
-      ((resizeable-p ds)
-       nil)
-      (t
-       nil))
+    ;; 2. compute offsets for each attribute-descriptor
+    (loop
+       :with offset = 0
+       :with accum = 0
+       :for desc :in descriptors :do
+       ;; compute offset
+       (setf (offset desc) offset)
+       ;; and increment the offset for the next attribute.
+       ;; TODO BROKEN
+       (incf offset (+ accum
+                       (* (size ds)
+                          (compute-attr-alignment (attr desc) named-layout)))))
+
+    ;; 3. Insert all descriptors into hash table
+    (loop
+       :for desc :in descriptors
+       :for attr-name :in (template named-layout) :do
+       (setf (gethash attr-name attribute-desc-table) desc))
+
+    ;;(inspect attribute-desc-table)
 
     ;; Then, set the hash table into the datastore.
     (setf (descriptors ds) attribute-desc-table)))
+
+
+
+
+
+
+
+
+
+
+(defgeneric gen-data-storage (ds kind)
+  (:documentation "Determine what underlying type and how big to allocate
+the storage for datastroe DS of KIND. Often the storage will be a
+static-vectors type, but it can be other more complex things too, depending
+upon the circumstances."))
+
+
+(defmethod gen-data-storage ((ds native-datastore) (kind (eql :interleave)))
+  (let ((data-size-in-bytes (compute-data-size-in-bytes ds kind)))
+
+    (format t "Allocating data :unsigned-byte size of: ~A~%"
+            data-size-in-bytes)
+
+    ;; 3. Fix up rest of datastore object.
+    (setf (data-type ds) :unsigned-byte ;; the GL type...
+
+          (data ds) (allocate-gl-typed-static-vector data-size-in-bytes
+                                                     (data-type ds))))
+  ds)
+
+(defmethod gen-data-storage ((ds native-datastore) (kind (eql :separate)))
+  ;; This is the same algorithm as :interelave for this function.
+  ;; But there is only a single attribute in the attribute group.
+  (gen-data-storage ds :interleave))
+
+(defmethod gen-data-storage ((ds native-datastore) (kind (eql :block)))
+  ;; This is the same algorithm as :interelave for this function.
+  (gen-data-storage ds :interleave))
+
+
+
+
+
+
+
 
 
 
@@ -584,39 +623,57 @@ storage."))
 properly maintained."))
 
 (defmethod resize ((ds native-datastore))
-  ;; XXX TODO Fix me for resizing when in a rezizeable :block situation!!!!
+  (let ((ds-kind (data-format (properties (named-layout ds)))))
 
-  (let* (;; byte size of the descriptors in toto
-         (attr-group-size (loop
-                             :for d :being :the :hash-values
-                             :in (descriptors ds)
-                             :summing (aligned-byte-length d)))
-         ;; Compute new number of attributes in the data store
-         ;; given the old size
-         (new-size (if (zerop (size ds))
-                       1024
-                       (ceiling (* (size ds) 1.5))))
-         ;; allocate the new array.
-         (new-data
-          (allocate-gl-typed-static-vector
-           (* new-size attr-group-size) (data-type ds))))
 
-    (format t "Resizing native data array from ~A attr groups to ~A attr groups.~%"
-            (size ds) new-size)
 
-    (unless (zerop (size ds))
-      ;; Copy the old data into the new data (as 'unsigned-byte).
-      ;; Allocation fills the array already with zero data, so we don't have
-      ;; to manage dealing with the unused places.
-      (replace new-data (data ds))
-      ;; free the native array!
-      (static-vectors:free-static-vector (data ds)))
+    ;; XXX TODO Fix me for resizing when in a rezizeable :block situation!!!!
+    (format t "Resizing a ds of kind ~A~%" ds-kind)
+    (when (eq ds-kind :block)
+      (error "Resize of :block datastores not implemented yet!"))
 
-    ;; reset the object to the new stuff.
-    (setf (data ds) new-data
-          (size ds) new-size)
 
-    ds))
+
+    (let* (;; byte size of the descriptors in toto
+           (attr-group-size (loop
+                               :for d :being :the :hash-values
+                               :in (descriptors ds)
+                               :summing (aligned-byte-length d)))
+           ;; Compute new number of attributes in the data store
+           ;; given the old size
+           (new-size (if (zerop (size ds))
+                         1024
+                         (ceiling (* (size ds) 1.5))))
+           ;; allocate the new array.
+           (new-data
+            (allocate-gl-typed-static-vector
+             (* new-size attr-group-size) (data-type ds))))
+
+      (format t "Resizing native data array from ~A attr groups to ~A attr groups.~%"
+              (size ds) new-size)
+
+      (unless (zerop (size ds))
+        (ecase ds-kind
+          ((:separate :interleave)
+           ;; Copy the old data into the new data (as 'unsigned-byte).
+           ;; Allocation fills the array already with zero data, so we
+           ;; don't have to manage dealing with the unused places.
+           (replace new-data (data ds)))
+          (:block
+           ;; Here, we must recompute the attribute descs and then carefully
+           ;; move the data from the old array at the old offsets to the new
+           ;; array at the new offsets.
+           ;; TODO: Implement me!
+           (error "Resize of :block datastores not implemented yet!")))
+
+        ;; free the native array!
+        (static-vectors:free-static-vector (data ds))
+
+        ;; reset the object to the new stuff.
+        (setf (data ds) new-data
+              (size ds) new-size))
+
+      ds)))
 
 
 
@@ -734,7 +791,7 @@ returns a newly allocated vector."))
                                   attr-start-byte-idx
                                   comp-vec
                                   0
-                                  (attr-count (attr attr-desc)))
+                                  num-components)
 
            ;; Don't have a good return value here...
            (attr-count (attr attr-desc))))
