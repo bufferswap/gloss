@@ -664,6 +664,10 @@ properly maintained."))
            ;; move the data from the old array at the old offsets to the new
            ;; array at the new offsets.
            ;; TODO: Implement me!
+
+	   ;; 1. in template order, get the current offsets for the current size
+	   ;; 2. in template order, compute the new offsets for the new size
+	   ;; 3. for each template attribute, REPLACE the old to new.
            (error "Resize of :block datastores not implemented yet!")))
 
         ;; free the native array!
