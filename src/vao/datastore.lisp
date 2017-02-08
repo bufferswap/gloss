@@ -825,3 +825,28 @@ returns a newly allocated vector."))
 
          ;; Don't have a good return value here.
          (length components))))))
+
+
+(defgeneric commit-to-gpu (ds &key &allow-other-keys)
+  (:documentation "Upload the datastore to the GPU using glBufferData()."))
+
+(defmethod commit-to-gpu ((ds native-datastore) &key (ensure-consistency-p T))
+  ;; 0. Ensure the attribute data in the descriptors is all consistent
+  ;; (which functionally means the appending index for all of them must be the
+  ;; same, representing that all attributes have been filled). Check
+  ;; ensure-consistency-p to determine if I should signal a condition on not
+  ;; consistent, or just assume zeros for missing data.
+
+  ;; 1. Prepare the buffer for upload. In the case of :interleave and :separate
+  ;; this is a nop. In the case of :block, it means compact the data to be
+  ;; continguous in the native array.
+
+  ;; 2. Upload the data. glBufferData(). But, only upload as much as is actually
+  ;; used.
+
+  ;; 3. Post process the buffer after upload. In the case of :interleave and
+  ;; :separate, this is a nop. In the case of :block, it means spread the data
+  ;; back out to match what is was when this function was originally called.
+
+  ;; 4. Return the number of attribute groups that have been uploaded.
+  nil)
