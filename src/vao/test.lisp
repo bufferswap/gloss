@@ -137,7 +137,7 @@
   (let ((attr-set (make-attribute-set
                    '(position :count 3 :accessors (px py pz))
                    '(normal :count 3 :accessors (nx ny nz))
-                   '(uv :type :half-float :count 2 :accessors (uvx uvy uvz)))))
+                   '(uv :type :half-float :count 2 :accessors (uvx uvy)))))
     (make-layout-set
      attr-set :triangles
      ;; Note: Datastore names must be unique.
@@ -241,16 +241,16 @@
     (destroy-datastore ds)))
 
 (defun test-3 ()
-  (let* ((num-tris 9)
+  (let* ((num-attrs 9)
          (layout-set (test-ds-layout))
          (ds (make-native-datastore 'bvertex layout-set
-                                    :size (* num-tris 3)
+                                    :size num-attrs
                                     :resizeable-p T)))
 
-    (loop :for i :below (* num-tris 3) :do
+    (loop :for i :below num-attrs :do
        (setf (attr-ref ds 'position :end) #(1 1 1))
        (setf (attr-ref ds 'normal :end) #(2 2 2))
-       (setf (attr-ref ds 'uv :end) #(10 10)))
+       (setf (attr-ref ds 'uv :end) #(0.0 1.0)))
 
 
     (inspect ds)
