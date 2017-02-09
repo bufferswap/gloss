@@ -549,15 +549,13 @@ storage."))
     ;; 2. compute offsets for each attribute-descriptor
     (loop
        :with offset = 0
-       :with accum = 0
        :for desc :in descriptors :do
        ;; compute offset
        (setf (offset desc) offset)
-       ;; and increment the offset for the next attribute.
-       ;; TODO BROKEN
-       (incf offset (+ accum
-                       (* (size ds)
-                          (compute-attr-alignment (attr desc) named-layout)))))
+       ;; and increment the offset to the start after SIZE amount of
+       ;; the current attribute is stored.
+       (incf offset (* (size ds)
+                       (compute-attr-alignment (attr desc) named-layout))))
 
     ;; 3. Insert all descriptors into hash table
     (loop
@@ -629,8 +627,8 @@ properly maintained."))
 
     ;; XXX TODO Fix me for resizing when in a rezizeable :block situation!!!!
     (format t "Resizing a ds of kind ~A~%" ds-kind)
-    (when (eq ds-kind :block)
-      (error "Resize of :block datastores not implemented yet!"))
+    #++(when (eq ds-kind :block)
+         (error "Resize of :block datastores not implemented yet!"))
 
 
 
@@ -663,12 +661,65 @@ properly maintained."))
            ;; Here, we must recompute the attribute descs and then carefully
            ;; move the data from the old array at the old offsets to the new
            ;; array at the new offsets.
-           ;; TODO: Implement me!
 
-	   ;; 1. in template order, get the current offsets for the current size
-	   ;; 2. in template order, compute the new offsets for the new size
-	   ;; 3. for each template attribute, REPLACE the old to new.
-           (error "Resize of :block datastores not implemented yet!")))
+           ;; 1. in template order, get the current offsets for the current size
+           ;; 2. in template order, compute the new offsets for the new size
+           (let ((old-offsets
+                  (loop :for name :in (template (named-layout ds))
+                     :collect (offset (gethash name (descriptors ds)))))
+
+                 (new-offsets
+                  (loop
+                     :with offset = 0
+                     :for name :in (template (named-layout ds))
+                     :for desc = (gethash name (descriptors ds))
+                     :collect offset :into offsets
+                     :do
+                     (incf offset
+                           (* new-size
+                              (compute-attr-alignment (attr desc)
+                                                      (named-layout ds))))
+                     :finally (return offsets))))
+
+             (format t "new size in attr groups: ~A~%" new-size)
+             (format t "old offsets: ~A~%" old-offsets)
+             (format t "new offsets: ~A~%" new-offsets)
+
+             ;; 3. for each template attribute, REPLACE the strip of data
+             ;; it has from the old array into the new array at the right
+             ;; offset for the expanded size.
+             (loop
+                :for name :in (template (named-layout ds))
+                :for old-off :in old-offsets
+                :for new-off :in new-offsets
+                :for desc = (gethash name (descriptors ds))
+                ;; The total number of possibly defined bytes devoted strictly
+                ;; and contiguously to NAME's data.
+                :for total-attr-bytes = (* (size ds)
+                                           (compute-attr-alignment
+                                            (attr desc)
+                                            (named-layout ds)))
+                :do
+                (format
+                 t "Copy ~A from byte index range ~A:~A to byte index ~A~%"
+                 name old-off (+ old-off total-attr-bytes)
+                 new-off)
+
+                (replace new-data (data ds)
+                         :start1 new-off
+                         :start2 old-off :end2 (+ old-off total-attr-bytes)))
+
+             ;; 4. Store the new offsets into the attr descs, I can't
+             ;; really call GEN-ATTRIBUTE-DESCRIPTORS again when the
+             ;; size is changed cause I need all the other data in
+             ;; there to be left alone.
+             ;;
+             ;; TODO: Meh, this is kinda nasty to just jam them in here.
+             (loop :for name :in (template (named-layout ds))
+                :for new-off :in new-offsets :do
+                (setf (offset (gethash name (descriptors ds))) new-off))
+
+             )))
 
         ;; free the native array!
         (static-vectors:free-static-vector (data ds))

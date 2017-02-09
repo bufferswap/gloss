@@ -247,10 +247,10 @@
                                     :size num-attrs
                                     :resizeable-p T)))
 
-    (loop :for i :below num-attrs :do
+    (loop :for i :below (+ num-attrs 5) :do
        (setf (attr-ref ds 'position :end) #(1 1 1))
        (setf (attr-ref ds 'normal :end) #(2 2 2))
-       (setf (attr-ref ds 'uv :end) #(0.0 1.0)))
+       (setf (attr-ref ds 'uv :end) #(1.0 1.0)))
 
 
     (inspect ds)
