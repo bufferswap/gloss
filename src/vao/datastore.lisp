@@ -67,6 +67,11 @@
    (%aligned-byte-length :initarg :aligned-byte-length
                          :initform NIL
                          :accessor aligned-byte-length)
+   ;; Keep track of the highest actual index which stores an attribute.
+   ;; This implies a setf was performed (either by the user or with :end).
+   (%max-defined-index :initarg :max-defined-index
+                       :initform -1
+                       :accessor max-defined-index)
    ))
 
 (defgeneric num-attrs (attr-desc)
@@ -747,6 +752,8 @@ returns a newly allocated vector."))
        "ATTR-REF: Non existent attrbute name: ~A in datastore descriptors ~A"
        name (descriptors ds)))
 
+
+
     ;; 2. Find the start byte of the attribute at the specified index.
     (let ((attr-start-byte-idx (+ (offset attr-desc)
                                   (* index (stride attr-desc)))))
@@ -765,6 +772,7 @@ returns a newly allocated vector."))
                                   (data ds)
                                   attr-start-byte-idx
                                   :out-vec result)
+
            result))
 
         (components
@@ -790,6 +798,7 @@ returns a newly allocated vector."))
                        (gl-type->byte-size (attr-type (attr attr-desc)))))
                  :out-vec result
                  :write-elem-index result-write-idx)))
+
            result))))))
 
 
@@ -848,6 +857,10 @@ returns a newly allocated vector."))
                                   0
                                   num-components)
 
+           ;; And record the potential new highest
+           (setf (max-defined-index attr-desc)
+                 (max (max-defined-index attr-desc) index))
+
            ;; Don't have a good return value here...
            (attr-count (attr attr-desc))))
 
@@ -874,8 +887,31 @@ returns a newly allocated vector."))
                read-idx
                1)))
 
+         ;; And record the potential new highest
+         (setf (max-defined-index attr-desc)
+               (max (max-defined-index attr-desc) index))
+
          ;; Don't have a good return value here.
          (length components))))))
+
+
+
+
+
+(defgeneric consistent-attributes-p (ds)
+  (:documentation
+   "Return T if the attribute data is consistent and NIL otherwise.
+TODO: Describe consistency (basically it means all attribute groups up to
+the max index set are defined)."))
+
+(defmethod consistent-attributes-p ((ds native-datastore))
+  (apply #'= (loop :for desc :being :the :hash-values :in (descriptors ds)
+                :collect (appending-index desc))))
+
+
+
+
+
 
 
 (defgeneric commit-to-gpu (ds &key &allow-other-keys)
@@ -898,6 +934,9 @@ returns a newly allocated vector."))
   ;; 3. Post process the buffer after upload. In the case of :interleave and
   ;; :separate, this is a nop. In the case of :block, it means spread the data
   ;; back out to match what is was when this function was originally called.
+  ;; Well, without thinking too much, I believe it'll undo the attributes
+  ;; back to how they used to be, but it might optiize the space left if
+  ;; possible.
 
   ;; 4. Return the number of attribute groups that have been uploaded.
   nil)

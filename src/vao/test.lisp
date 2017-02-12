@@ -259,6 +259,7 @@
        (setf (attr-ref ds 'uv :end) (vector i i)))
 
 
+    (format t "Is datastore consistent? ~A~%" (consistent-attributes-p ds))
 
     (inspect ds)
 
