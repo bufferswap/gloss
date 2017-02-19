@@ -342,6 +342,21 @@ IN-SVEC."
 
 
 
+
+(defgeneric map-attr-descs (func ds)
+  (:documentation "Map the FUNC across the attribute descriptors in
+the order of the attribute template specification in datastore DS and
+return the list."))
+
+(defmethod map-attr-descs (func (ds datastore))
+  (loop :for attr-name :in (template (named-layout ds))
+     :for attr-desc = (gethash attr-name (descriptors ds))
+     :collect (funcall func attr-desc)))
+
+
+
+
+
 ;; TODO: This returns a datastore to store the data appropriate for
 ;; the definition of the datastore-name whose data type is
 ;; always unsigned-byte.
@@ -615,8 +630,31 @@ upon the circumstances."))
 
 
 
+(defun construct-new-block-offsets (ds new-size)
+  "This function is really only meaningful when the DS is a daatstore holding
+a :block datastore. Return two values, the first is a list, in template order,
+of the byte offsets of the beginning of each block attribute. The second
+one is the same, but as if the block attributes should be layed out in the
+native data store with NEW-SIZE amount of attributes. This function does not
+alter any data in DS."
+  (let ((old-offsets
+         (loop :for name :in (template (named-layout ds))
+            :collect (offset (gethash name (descriptors ds)))))
 
+        (new-offsets
+         (loop
+            :with offset = 0
+            :for name :in (template (named-layout ds))
+            :for desc = (gethash name (descriptors ds))
+            :collect offset :into offsets
+            :do
+            (incf offset
+                  (* new-size
+                     (compute-attr-alignment (attr desc)
+                                             (named-layout ds))))
+            :finally (return offsets))))
 
+    (values old-offsets new-offsets)))
 
 
 
@@ -663,68 +701,54 @@ properly maintained."))
            ;; don't have to manage dealing with the unused places.
            (replace new-data (data ds)))
           (:block
-           ;; Here, we must recompute the attribute descs and then carefully
-           ;; move the data from the old array at the old offsets to the new
-           ;; array at the new offsets.
+              ;; Here, we must recompute the attribute descs and then carefully
+              ;; move the data from the old array at the old offsets to the new
+              ;; array at the new offsets.
 
-           ;; 1. in template order, get the current offsets for the current size
-           ;; 2. in template order, compute the new offsets for the new size
-           (let ((old-offsets
-                  (loop :for name :in (template (named-layout ds))
-                     :collect (offset (gethash name (descriptors ds)))))
+              ;; 1. in template order, get the current offsets for the current size
+              ;; 2. in template order, compute the new offsets for the new size
+              (multiple-value-bind (old-offsets new-offsets)
+                  (construct-new-block-offsets ds new-size)
 
-                 (new-offsets
-                  (loop
-                     :with offset = 0
-                     :for name :in (template (named-layout ds))
-                     :for desc = (gethash name (descriptors ds))
-                     :collect offset :into offsets
-                     :do
-                     (incf offset
-                           (* new-size
-                              (compute-attr-alignment (attr desc)
-                                                      (named-layout ds))))
-                     :finally (return offsets))))
+                (format t "new size in attr groups: ~A~%" new-size)
+                (format t "old offsets: ~A~%" old-offsets)
+                (format t "new offsets: ~A~%" new-offsets)
 
-             (format t "new size in attr groups: ~A~%" new-size)
-             (format t "old offsets: ~A~%" old-offsets)
-             (format t "new offsets: ~A~%" new-offsets)
+                ;; 3. for each template attribute, REPLACE the strip of data
+                ;; it has from the old array into the new array at the right
+                ;; offset for the expanded size.
+                (loop
+                   :for name :in (template (named-layout ds))
+                   :for old-off :in old-offsets
+                   :for new-off :in new-offsets
+                   :for desc = (gethash name (descriptors ds))
+                   ;; The total number of possibly defined bytes devoted strictly
+                   ;; and contiguously to NAME's data.
+                   :for total-attr-bytes = (* (size ds)
+                                              (compute-attr-alignment
+                                               (attr desc)
+                                               (named-layout ds)))
+                   :do
+                   (format
+                    t "Copy ~A from byte index range ~A:~A to byte index ~A~%"
+                    name old-off (+ old-off total-attr-bytes)
+                    new-off)
 
-             ;; 3. for each template attribute, REPLACE the strip of data
-             ;; it has from the old array into the new array at the right
-             ;; offset for the expanded size.
-             (loop
-                :for name :in (template (named-layout ds))
-                :for old-off :in old-offsets
-                :for new-off :in new-offsets
-                :for desc = (gethash name (descriptors ds))
-                ;; The total number of possibly defined bytes devoted strictly
-                ;; and contiguously to NAME's data.
-                :for total-attr-bytes = (* (size ds)
-                                           (compute-attr-alignment
-                                            (attr desc)
-                                            (named-layout ds)))
-                :do
-                (format
-                 t "Copy ~A from byte index range ~A:~A to byte index ~A~%"
-                 name old-off (+ old-off total-attr-bytes)
-                 new-off)
+                   (replace new-data (data ds)
+                            :start1 new-off
+                            :start2 old-off :end2 (+ old-off total-attr-bytes)))
 
-                (replace new-data (data ds)
-                         :start1 new-off
-                         :start2 old-off :end2 (+ old-off total-attr-bytes)))
+                ;; 4. Store the new offsets into the attr descs, I can't
+                ;; really call GEN-ATTRIBUTE-DESCRIPTORS again when the
+                ;; size is changed cause I need all the other data in
+                ;; there to be left alone.
+                ;;
+                ;; TODO: Meh, this is kinda nasty to just jam them in here.
+                (loop :for name :in (template (named-layout ds))
+                   :for new-off :in new-offsets :do
+                   (setf (offset (gethash name (descriptors ds))) new-off))
 
-             ;; 4. Store the new offsets into the attr descs, I can't
-             ;; really call GEN-ATTRIBUTE-DESCRIPTORS again when the
-             ;; size is changed cause I need all the other data in
-             ;; there to be left alone.
-             ;;
-             ;; TODO: Meh, this is kinda nasty to just jam them in here.
-             (loop :for name :in (template (named-layout ds))
-                :for new-off :in new-offsets :do
-                (setf (offset (gethash name (descriptors ds))) new-off))
-
-             )))
+                )))
 
         ;; free the native array!
         (static-vectors:free-static-vector (data ds))
@@ -895,9 +919,6 @@ returns a newly allocated vector."))
          (length components))))))
 
 
-
-
-
 (defgeneric consistent-attributes-p (ds)
   (:documentation
    "Return T if the attribute data is consistent and NIL otherwise.
@@ -905,10 +926,15 @@ TODO: Describe consistency (basically it means all attribute groups up to
 the max index set are defined)."))
 
 (defmethod consistent-attributes-p ((ds native-datastore))
-  (apply #'= (loop :for desc :being :the :hash-values :in (descriptors ds)
-                :collect (appending-index desc))))
-
-
+  (let ((max-indices-list
+         (loop :for desc :being :the :hash-values :in (descriptors ds)
+            :collect (max-defined-index desc))))
+    (and (apply #'= max-indices-list)
+         ;; TODO: I'm unsure about this test. If you have no
+         ;; attributes in a datastore, is it consistent? Currently, I
+         ;; say no, but that might change in the future.
+         (every #'identity (mapcar (lambda (v) (/= v -1))
+                                   max-indices-list)))))
 
 
 
@@ -918,6 +944,9 @@ the max index set are defined)."))
   (:documentation "Upload the datastore to the GPU using glBufferData()."))
 
 (defmethod commit-to-gpu ((ds native-datastore) &key (ensure-consistency-p T))
+  ;; -1. This function assumes any external opengl state is set up when
+  ;; it does the buffer data bit.
+
   ;; 0. Ensure the attribute data in the descriptors is all consistent
   ;; (which functionally means the appending index for all of them must be the
   ;; same, representing that all attributes have been filled). Check
@@ -928,15 +957,28 @@ the max index set are defined)."))
   ;; this is a nop. In the case of :block, it means compact the data to be
   ;; continguous in the native array.
 
-  ;; 2. Upload the data. glBufferData(). But, only upload as much as is actually
-  ;; used.
+  (let ((data-format (data-format (properties (named-layout ds))))
+        ;; This tells us the maximal number of attributes that we need
+        ;; to ensure end up on the card. This is the index of the
+        ;; actual last attribute.
+        (max-defined-index
+         (apply #'max (map-attr-descs #'max-defined-index ds))))
 
-  ;; 3. Post process the buffer after upload. In the case of :interleave and
-  ;; :separate, this is a nop. In the case of :block, it means spread the data
-  ;; back out to match what is was when this function was originally called.
-  ;; Well, without thinking too much, I believe it'll undo the attributes
-  ;; back to how they used to be, but it might optiize the space left if
-  ;; possible.
+    (case data-format
+      (:block
+          nil))
 
-  ;; 4. Return the number of attribute groups that have been uploaded.
-  nil)
+    ;; 2. Upload the data. glBufferData(). But, only upload as much as
+    ;; is actually used.
+
+    ;; 3. Post process the buffer after upload. In the case of
+    ;; :interleave and :separate, this is a nop. In the case of
+    ;; :block, it means spread the data back out to match what is was
+    ;; when this function was originally called.  Well, without
+    ;; thinking too much, I believe it'll undo the attributes back to
+    ;; how they used to be, but it might optiize the space left if
+    ;; possible.
+
+    ;; 4. Return the number of attribute groups that have been
+    ;; uploaded.
+    nil))
