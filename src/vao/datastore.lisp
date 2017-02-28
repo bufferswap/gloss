@@ -133,6 +133,19 @@ into the datastore with which this ATTR-DESC is associated."))
                   :reader resizeable-p)
    ))
 
+(defclass datastore-array-buffer (datastore) ())
+(defclass datastore-element-array-buffer (datastore) ())
+(defclass datastore-copy-buffer (datastore) ())
+(defclass datastore-pixel-buffer (datastore) ())
+(defclass datastore-query-buffer (datastore) ())
+(defclass datastore-texture-buffer (datastore) ())
+(defclass datastore-transform-feedback-buffer (datastore) ())
+(defclass datastore-uniform-buffer (datastore) ())
+(defclass datastore-draw-indirect-buffer (datastore) ())
+(defclass datastore-atomic-counter-buffer (datastore) ())
+(defclass datastore-dispatch-indirect-buffer (datastore) ())
+(defclass datastore-shader-storage-buffer (datastore) ())
+
 ;; This derived type of datastore has methods on it to understand the
 ;; fact that this type represents binary level attribute layouts in
 ;; native machine memory arrays (such as static-vectors) which are
@@ -701,12 +714,15 @@ properly maintained."))
            ;; don't have to manage dealing with the unused places.
            (replace new-data (data ds)))
           (:block
-              ;; Here, we must recompute the attribute descs and then carefully
-              ;; move the data from the old array at the old offsets to the new
-              ;; array at the new offsets.
+              ;; Here, we must recompute the attribute descs and then
+              ;; carefully move the data from the old array at the old
+              ;; offsets to the new array at the new offsets.
 
-              ;; 1. in template order, get the current offsets for the current size
-              ;; 2. in template order, compute the new offsets for the new size
+              ;; 1. in template order, get the current offsets for the
+              ;; current size
+	      ;;
+              ;; 2. in template order, compute the new offsets for the
+              ;; new size
               (multiple-value-bind (old-offsets new-offsets)
                   (construct-new-block-offsets ds new-size)
 
@@ -722,8 +738,9 @@ properly maintained."))
                    :for old-off :in old-offsets
                    :for new-off :in new-offsets
                    :for desc = (gethash name (descriptors ds))
-                   ;; The total number of possibly defined bytes devoted strictly
-                   ;; and contiguously to NAME's data.
+                   ;; The total number of possibly defined bytes
+                   ;; devoted strictly and contiguously to NAME's
+                   ;; data.
                    :for total-attr-bytes = (* (size ds)
                                               (compute-attr-alignment
                                                (attr desc)
