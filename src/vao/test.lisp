@@ -241,28 +241,28 @@
     (destroy-datastore ds)))
 
 (defun test-3 ()
-  (let* ((num-tris 1)
+  (let* ((num-tris 16)
          (layout-set (test-ds-layout))
          (ds (make-native-datastore 'bvertex layout-set
                                     :size (* num-tris 3)
                                     :resizeable-p T)))
 
-    (loop :for i :below (* num-tris 2) :do
-       (setf (attr-ref ds 'position :end) (vector i i i))
-       (setf (attr-ref ds 'position :end) (vector i i i))
-       (setf (attr-ref ds 'position :end) (vector i i i))
-       (setf (attr-ref ds 'normal :end) (vector i i i))
-       (setf (attr-ref ds 'normal :end) (vector i i i))
-       (setf (attr-ref ds 'normal :end) (vector i i i))
-       (setf (attr-ref ds 'uv :end) (vector i i))
-       (setf (attr-ref ds 'uv :end) (vector i i))
-       (setf (attr-ref ds 'uv :end) (vector i i)))
-
+    ;; fill it half way.
+    (loop :for i :below 8 :do
+       (setf (attr-ref ds 'position :end) (vector 1 1 1))
+       (setf (attr-ref ds 'position :end) (vector 2 2 2))
+       (setf (attr-ref ds 'position :end) (vector 3 3 3))
+       (setf (attr-ref ds 'normal :end) (vector 127 127 127))
+       (setf (attr-ref ds 'normal :end) (vector 129 129 129))
+       (setf (attr-ref ds 'normal :end) (vector 130 130 130))
+       (setf (attr-ref ds 'uv :end) (vector 1 1))
+       (setf (attr-ref ds 'uv :end) (vector 2 2))
+       (setf (attr-ref ds 'uv :end) (vector 3 3)))
 
     (format t "Is datastore consistent? ~A~%" (consistent-attributes-p ds))
 
     (commit-to-gpu ds)
 
-    (inspect ds)
+    ;;(inspect ds)
 
     (destroy-datastore ds)))

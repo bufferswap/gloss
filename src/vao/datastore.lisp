@@ -165,6 +165,34 @@ into the datastore with which this ATTR-DESC is associated."))
   (attribute-set (layout-set ds)))
 
 
+(defgeneric map-attr-descs (func ds)
+  (:documentation "Map the FUNC across the attribute descriptors in
+the order of the attribute template specification in datastore DS and
+return the list."))
+
+(defmethod map-attr-descs (func (ds datastore))
+  (loop :for attr-name :in (template (named-layout ds))
+     :for attr-desc = (gethash attr-name (descriptors ds))
+     :collect (funcall func attr-desc)))
+
+(defgeneric attr-group-byte-size (ds)
+  (:documentation "How big, in bytes is one complete grouping of the elements
+describes in the template of the datastore. This inlucde the (possible)
+alignment size of the elements of the attribute group if required."))
+
+(defmethod attr-group-byte-size ((ds datastore))
+  (reduce #'+ (map-attr-descs #'aligned-byte-length ds)))
+
+
+
+
+
+
+
+
+
+
+
 
 (defun align-up-to (value power)
   "Align the value up to the next (expt 2 POWER) multiple if required."
@@ -172,7 +200,7 @@ into the datastore with which this ATTR-DESC is associated."))
     (logand (+ value (1- align)) (lognot (1- align)))))
 
 (defun next-multiple (value multiple)
-  "Return the integer VALUE is it is easily divisible by MULTIPLE, or the next
+  "Return the integer VALUE if it is easily divisible by MULTIPLE, or the next
 highest integer that is divisible by MULTIPLE."
   (* (ceiling (/ value multiple)) multiple))
 
@@ -356,15 +384,6 @@ IN-SVEC."
 
 
 
-(defgeneric map-attr-descs (func ds)
-  (:documentation "Map the FUNC across the attribute descriptors in
-the order of the attribute template specification in datastore DS and
-return the list."))
-
-(defmethod map-attr-descs (func (ds datastore))
-  (loop :for attr-name :in (template (named-layout ds))
-     :for attr-desc = (gethash attr-name (descriptors ds))
-     :collect (funcall func attr-desc)))
 
 
 
@@ -396,7 +415,7 @@ and :RESIZEABLE-P defaults to NIL."
                                           (properties named-layout)))
 
     ;; 2. Allocate the native array.
-    (gen-data-storage datastore (data-format (properties named-layout)))
+    (gen-data-storage datastore)
 
     datastore))
 
@@ -443,40 +462,19 @@ the end of the ATTR upto the aligned size."
 
 
 
-;; TODO: I need to inspect this, but it might always be the same for all three
-;; since it appears not to matter the arragement of the attributes, the total
-;; size looks to always be the same.
-
-(defgeneric compute-data-size-in-bytes (ds kind)
-  (:documentation "Compute the total size, in bytes, of a native data array
-which will be used to store (possibly) aligned attribute data."))
-
-(defmethod compute-data-size-in-bytes ((ds native-datastore)
-                                       (kind (eql :interleave)))
+(defun compute-data-size-in-bytes (ds)
+  "Compute the total size, in bytes, of a native data array
+which will be used to store (possibly) aligned attribute data."
   (* (size ds) ;; The number of attribute groups....
 
      ;; Compute the size of one "group" (which is the total size of
      ;; all aligned attributes that can be referenced by the same
-     ;; index in the datastore)
-     (loop
-        :for d :being :the :hash-values :in (descriptors ds)
-        :summing (aligned-byte-length d))))
+     ;; index in the datastore).
 
-(defmethod compute-data-size-in-bytes ((ds native-datastore)
-                                       (kind (eql :separate)))
-  ;; This is the same algorithm as for :interleave for this function.
-  ;; But there is only a single attribute in the attribute group.
-  (compute-data-size-in-bytes ds :interleave))
-
-(defmethod compute-data-size-in-bytes ((ds native-datastore)
-                                       (kind (eql :block)))
-  ;; This is the same algorithm as for :interleave for this function.
-  (compute-data-size-in-bytes ds :interleave))
-
-
-
-
-
+     ;; It turns out, that no matter how the attributes are actually layed out,
+     ;; either :interleave, :block, or :seperate, that the total bytes devoted
+     ;; to it are identical in each case at a given size.
+     (attr-group-byte-size ds)))
 
 
 
@@ -596,8 +594,6 @@ storage."))
        :for attr-name :in (template named-layout) :do
        (setf (gethash attr-name attribute-desc-table) desc))
 
-    ;;(inspect attribute-desc-table)
-
     ;; Then, set the hash table into the datastore.
     (setf (descriptors ds) attribute-desc-table)))
 
@@ -606,19 +602,14 @@ storage."))
 
 
 
-
-
-
-
-(defgeneric gen-data-storage (ds kind)
-  (:documentation "Determine what underlying type and how big to allocate
-the storage for datastroe DS of KIND. Often the storage will be a
-static-vectors type, but it can be other more complex things too, depending
-upon the circumstances."))
-
-
-(defmethod gen-data-storage ((ds native-datastore) (kind (eql :interleave)))
-  (let ((data-size-in-bytes (compute-data-size-in-bytes ds kind)))
+(defun gen-data-storage (ds)
+  "Determine what underlying type and how big to allocate the storage
+for datastroe DS of KIND. Often the storage will be a static-vectors
+type, but it can be other more complex things too, depending upon the
+circumstances. Notice that no matter the actual underlying data
+formate of :interleave, :block: or :seperate, this will do the right
+thing."
+  (let ((data-size-in-bytes (compute-data-size-in-bytes ds)))
 
     (format t "Allocating data :unsigned-byte size of: ~A~%"
             data-size-in-bytes)
@@ -630,14 +621,6 @@ upon the circumstances."))
                                                      (data-type ds))))
   ds)
 
-(defmethod gen-data-storage ((ds native-datastore) (kind (eql :separate)))
-  ;; This is the same algorithm as :interelave for this function.
-  ;; But there is only a single attribute in the attribute group.
-  (gen-data-storage ds :interleave))
-
-(defmethod gen-data-storage ((ds native-datastore) (kind (eql :block)))
-  ;; This is the same algorithm as :interelave for this function.
-  (gen-data-storage ds :interleave))
 
 
 
@@ -679,20 +662,10 @@ properly maintained."))
 (defmethod resize ((ds native-datastore))
   (let ((ds-kind (data-format (properties (named-layout ds)))))
 
-
-
-    ;; XXX TODO Fix me for resizing when in a rezizeable :block situation!!!!
     (format t "Resizing a ds of kind ~A~%" ds-kind)
-    #++(when (eq ds-kind :block)
-         (error "Resize of :block datastores not implemented yet!"))
-
-
 
     (let* (;; byte size of the descriptors in toto
-           (attr-group-size (loop
-                               :for d :being :the :hash-values
-                               :in (descriptors ds)
-                               :summing (aligned-byte-length d)))
+           (attr-group-size (attr-group-byte-size ds))
            ;; Compute new number of attributes in the data store
            ;; given the old size
            (new-size (if (zerop (size ds))
@@ -720,7 +693,7 @@ properly maintained."))
 
               ;; 1. in template order, get the current offsets for the
               ;; current size
-	      ;;
+              ;;
               ;; 2. in template order, compute the new offsets for the
               ;; new size
               (multiple-value-bind (old-offsets new-offsets)
@@ -936,6 +909,11 @@ returns a newly allocated vector."))
          (length components))))))
 
 
+
+
+
+
+
 (defgeneric consistent-attributes-p (ds)
   (:documentation
    "Return T if the attribute data is consistent and NIL otherwise.
@@ -957,6 +935,135 @@ the max index set are defined)."))
 
 
 
+;; XXX This code is correct, but in the wrong context.
+(defun coalesce-data (ds)
+  "This function shrinks the attribute data to be contiguus. It is
+expected that after this call, the data is uploaded to the GPU and then
+uncoalesce-data is called right afterwards."
+  (let ((data-format (data-format (properties (named-layout ds)))))
+
+    ;; Check to see if we should both doing this.
+    (unless (eq data-format :block)
+      (return-from coalesce-data NIL))
+
+    ;; This number is the number of the defined attributes
+    ;; as according to the user who was inserting them. If this is
+    ;; a :block for example, then this is the most of one of the
+    ;; attributes. All others are considered defined up to this number,
+    ;; but if they aren't actually defined, they get zero.
+    (let ((num-defined-attrs
+           (apply #'max (map-attr-descs #'num-attrs ds))))
+
+      ;; Create the new offsets which lay the data out contiguously.
+      (multiple-value-bind (old-offsets new-offsets)
+          (construct-new-block-offsets ds num-defined-attrs)
+
+        ;; I should fix this to probably ignore the first replacement.
+        ;; We specfically go from left to right in the template to processes
+        ;; this so we don't overwrite anything bad.
+        (loop
+           :for name :in (template (named-layout ds))
+           :for old-off :in old-offsets
+           :for new-off :in new-offsets
+           :for desc = (gethash name (descriptors ds))
+           ;; The total number of possibly defined bytes
+           ;; devoted strictly and contiguously to NAME's
+           ;; data.
+           :for total-attr-bytes = (* num-defined-attrs
+                                      (compute-attr-alignment
+                                       (attr desc)
+                                       (named-layout ds)))
+           :do
+           (format
+            t "Coalesce ~A from byte index range ~A:~A to byte index ~A~%"
+            name old-off (+ old-off total-attr-bytes)
+            new-off)
+
+           (replace (data ds)
+                    (data ds)
+                    :start1 new-off
+                    :start2 old-off :end2 (+ old-off total-attr-bytes))
+
+           ;; Then, zero out the space between the end of the new and the old.
+           ;; Don't need this since it'll be overwritten by later copies.
+           ;; This catches cases where there are an uneven number of attributes
+           ;; for each attribute and doesn't leave incorrect data in the array.
+           (loop :for index
+              :from (+ new-off total-attr-bytes)
+              :below (+ old-off total-attr-bytes)
+              :do (setf (aref (data ds) index) 0))
+           )
+
+
+        ;; At the end of this copying, we wipe out the remainder bytes to
+        ;; be zero.
+        (let ((end-of-coalesced-data-index
+               (* num-defined-attrs
+                  (attr-group-byte-size ds))))
+
+          (loop
+             :for index :from end-of-coalesced-data-index
+             :below (length (data ds))
+             :do (setf (aref (data ds) index) 0)))
+
+        ;; Yes, I did work, return something which allows me to undo it
+        (values num-defined-attrs old-offsets new-offsets)))))
+
+
+
+(defun uncoalesce-data (ds num-defined-attrs orig-offsets
+                        coalesced-offsets)
+  "Assuming the DS is in coalesced state, uncoalesce the data back into the
+original size of the DS. It is assumed that the size of the DS will be
+greater than or equal to the NUM-DEFINED-ATTRS. The ORIG-OFFSETS was the
+original location of the data and the coalesced offsets are the current
+locations of the coalesced data."
+  (let ((data-format (data-format (properties (named-layout ds)))))
+
+    ;; Check to see if we should both doing this.
+    (unless (eq data-format :block)
+      (return-from uncoalesce-data NIL))
+
+    ;; Create the new offsets which restore the data to the original
+    ;; position
+    (let ((old-offsets coalesced-offsets)
+          (new-offsets orig-offsets))
+
+      ;; We specfically go from right to left in the template to processes
+      ;; this so we don't overwrite anything bad.
+      (loop
+         :for name :in (reverse (template (named-layout ds)))
+         :for old-off :in (reverse old-offsets)
+         :for new-off :in (reverse new-offsets)
+         :for desc = (gethash name (descriptors ds))
+         ;; The total number of possibly defined bytes
+         ;; devoted strictly and contiguously to NAME's
+         ;; data.
+         :for total-attr-bytes = (* num-defined-attrs
+                                    (compute-attr-alignment
+                                     (attr desc)
+                                     (named-layout ds)))
+         :do
+
+         (format
+          t "Uncoalesce ~A from byte index range ~A:~A to byte index ~A~%"
+          name old-off (+ old-off total-attr-bytes)
+          new-off)
+
+         (replace (data ds)
+                  (data ds)
+                  :start1 new-off
+                  :start2 old-off :end2 (+ old-off total-attr-bytes))
+
+         ;; Then, zero out the space between the old start of the
+         ;; attribute and the new start. This removes any extranoues
+         ;; data left over.
+         (loop :for index :from old-off :below new-off
+            :do (setf (aref (data ds) index) 0)))
+
+      T)))
+
+
 (defgeneric commit-to-gpu (ds &key &allow-other-keys)
   (:documentation "Upload the datastore to the GPU using glBufferData()."))
 
@@ -974,17 +1081,11 @@ the max index set are defined)."))
   ;; this is a nop. In the case of :block, it means compact the data to be
   ;; continguous in the native array.
 
-  (let ((data-format (data-format (properties (named-layout ds))))
-        ;; This tells us the maximal number of attributes that we need
-        ;; to ensure end up on the card. This is the index of the
-        ;; actual last attribute.
-        (max-defined-index
-         (apply #'max (map-attr-descs #'max-defined-index ds))))
+  (format t "Before coaclescing: ~A~%" (data ds))
+  (multiple-value-bind (coalesced-defined-index orig-offsets coalesced-offsets)
+      (coalesce-data ds)
 
-    (case data-format
-      (:block
-          nil))
-
+    (format t "After coalescing: ~A~%" (data ds))
     ;; 2. Upload the data. glBufferData(). But, only upload as much as
     ;; is actually used.
 
@@ -995,7 +1096,10 @@ the max index set are defined)."))
     ;; thinking too much, I believe it'll undo the attributes back to
     ;; how they used to be, but it might optiize the space left if
     ;; possible.
+    (uncoalesce-data ds coalesced-defined-index orig-offsets coalesced-offsets))
 
-    ;; 4. Return the number of attribute groups that have been
-    ;; uploaded.
-    nil))
+  ;; 4. Return the number of attribute groups that have been
+  ;; uploaded.
+  (format t "After uncoalescing: ~A~%" (data ds))
+
+  nil)
