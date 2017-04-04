@@ -213,8 +213,8 @@ void main() {
      '(((:data-format :separate)
         (:binding-target :element-array-buffer)
         (:usage-hint :static-draw)
-	;; Figure this out, why must this be NIL? Can I not align
-	;; :element-array-buffer data?
+        ;; Figure this out, why must this be NIL? Can I not align
+        ;; :element-array-buffer data?
         (:align NIL))
        (indicies (index))))))
 
@@ -383,27 +383,29 @@ void main() {
           (gl:enable-vertex-attrib-array pos-attr)
           (gl:vertex-attrib-pointer
            pos-attr 3 :float :false
-	   (attr-group-byte-size ds-verts)
+           (attr-group-byte-size ds-verts)
            #++(+
-            ;; 3 for position
-            (* 3 (cffi:foreign-type-size :float))
-            ;; 2 for uv
-            (* 2 (cffi:foreign-type-size :unsigned-char)))
-           0)
+               ;; 3 for position
+               (* 3 (cffi:foreign-type-size :float))
+               ;; 2 for uv
+               (* 2 (cffi:foreign-type-size :unsigned-char)))
+           (attr-start-byte-offset ds-verts 'position)
+           #++ 0)
 
           ;; Enable UV Attribute Data and associate with layout position in
           ;; shader
           (gl:enable-vertex-attrib-array uv-attr)
           (gl:vertex-attrib-pointer
            uv-attr 2 :unsigned-byte :true
-	   (attr-group-byte-size ds-verts)
+           (attr-group-byte-size ds-verts)
            #++(+
-            ;; 3 for position
-            (* 3 (cffi:foreign-type-size :float))
-            ;; 2 for uv
-            (* 2 (cffi:foreign-type-size :unsigned-char)))
+               ;; 3 for position
+               (* 3 (cffi:foreign-type-size :float))
+               ;; 2 for uv
+               (* 2 (cffi:foreign-type-size :unsigned-char)))
            ;; start of first uv after position.
-           (* 3 (cffi:foreign-type-size :float)))
+           (attr-start-byte-offset ds-verts 'uv)
+           #++(* 3 (cffi:foreign-type-size :float)))
 
           ;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;
           ;; bind separate color attribute datastore into vao here
@@ -423,9 +425,11 @@ void main() {
           ;; Enable Color Data and associate with layout position in shader.
           (gl:enable-vertex-attrib-array color-attr)
           (gl:vertex-attrib-pointer color-attr 4 :float :false
-				    (attr-group-byte-size ds-colors)
+                                    (attr-group-byte-size ds-colors)
                                     ;; attempt explicit stride here.
-                                    #++(* 4 (cffi:foreign-type-size :float)) 0)
+                                    (attr-start-byte-offset ds-colors 'rgba)
+                                    #++(* 4 (cffi:foreign-type-size :float))
+                                    #++ 0)
 
           ;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;
           ;; bind the index array

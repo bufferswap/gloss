@@ -16,7 +16,8 @@
 	   #:make-native-datastore
 	   #:commit-to-gpu
 	   #:attr-ref
-	   #:attr-group-byte-size))
+	   #:attr-group-byte-size
+	   #:attr-start-byte-offset))
 
 (defpackage #:gloss.vao.example-0
   (:use #:cl

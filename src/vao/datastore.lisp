@@ -175,6 +175,7 @@ return the list."))
      :for attr-desc = (gethash attr-name (descriptors ds))
      :collect (funcall func attr-desc)))
 
+;; TODO: THis is really a stride value.
 (defgeneric attr-group-byte-size (ds)
   (:documentation "How big, in bytes is one complete grouping of the elements
 describes in the template of the datastore. This includes the (possible)
@@ -183,8 +184,17 @@ alignment size of the elements of the attribute group if required."))
 (defmethod attr-group-byte-size ((ds datastore))
   (reduce #'+ (map-attr-descs #'aligned-byte-length ds)))
 
+;; TODO: Name is a bit funny.
+(defgeneric attr-start-byte-offset (ds attr-name)
+  (:documentation "Return the offset to the start of the attribute
+data in this datastore. Return NIL of the attr-name is not valid for
+this datastore."))
 
-
+(defmethod attr-start-byte-offset (ds attr-name)
+  (multiple-value-bind (desc present-p)
+      (gethash attr-name (descriptors ds))
+    (when present-p
+      (offset desc))))
 
 
 
