@@ -177,7 +177,7 @@ return the list."))
 
 (defgeneric attr-group-byte-size (ds)
   (:documentation "How big, in bytes is one complete grouping of the elements
-describes in the template of the datastore. This inlucde the (possible)
+describes in the template of the datastore. This includes the (possible)
 alignment size of the elements of the attribute group if required."))
 
 (defmethod attr-group-byte-size ((ds datastore))
@@ -1069,7 +1069,8 @@ locations of the coalesced data."
 
 (defmethod commit-to-gpu ((ds native-datastore) &key (ensure-consistency-p T))
   ;; -1. This function assumes any external opengl state is set up when
-  ;; it does the buffer data bit.
+  ;; it does the buffer data bit. Meaning, the vbo (or whatever other)
+  ;; bindings must be bound before uploading the data.
 
   ;; 0. Ensure the attribute data in the descriptors is all consistent
   ;; (which functionally means the appending index for all of them must be the
@@ -1081,25 +1082,38 @@ locations of the coalesced data."
   ;; this is a nop. In the case of :block, it means compact the data to be
   ;; continguous in the native array.
 
-  (format t "Before coaclescing: ~A~%" (data ds))
+  ;;(format t "Before coaclescing: ~A~%" (data ds))
   (multiple-value-bind (coalesced-defined-index orig-offsets coalesced-offsets)
       (coalesce-data ds)
 
-    (format t "After coalescing: ~A~%" (data ds))
+    ;;(format t "After coalescing: ~A~%" (data ds))
+
     ;; 2. Upload the data. glBufferData(). But, only upload as much as
     ;; is actually used.
+    (let ((max-defined-attrs (apply #'max (map-attr-descs #'num-attrs ds))))
+      (%gl:buffer-data
+       ;; Define what type of data store this should be, :array-buffer, etc.
+       (binding-target (properties (named-layout ds)))
+       ;; How many bytes am I uploading?
+       (* max-defined-attrs (attr-group-byte-size ds))
+       ;; pointer to the actual data
+       (static-vectors:static-vector-pointer (data ds))
+       ;; And the usage hint, :static-draw, etc
+       (usage-hint (properties (named-layout ds))))
 
-    ;; 3. Post process the buffer after upload. In the case of
-    ;; :interleave and :separate, this is a nop. In the case of
-    ;; :block, it means spread the data back out to match what is was
-    ;; when this function was originally called.  Well, without
-    ;; thinking too much, I believe it'll undo the attributes back to
-    ;; how they used to be, but it might optiize the space left if
-    ;; possible.
-    (uncoalesce-data ds coalesced-defined-index orig-offsets coalesced-offsets))
 
-  ;; 4. Return the number of attribute groups that have been
-  ;; uploaded.
-  (format t "After uncoalescing: ~A~%" (data ds))
+      ;; 3. Post process the buffer after upload. In the case of
+      ;; :interleave and :separate, this is a nop. In the case of
+      ;; :block, it means spread the data back out to match what is was
+      ;; when this function was originally called.  Well, without
+      ;; thinking too much, I believe it'll undo the attributes back to
+      ;; how they used to be, but it might optiize the space left if
+      ;; possible.
+      (uncoalesce-data
+       ds coalesced-defined-index orig-offsets coalesced-offsets)
 
-  nil)
+      ;; 4. Return the number of attribute groups that have been
+      ;; uploaded.
+      ;;(format t "After uncoalescing: ~A~%" (data ds))
+
+      max-defined-attrs)))

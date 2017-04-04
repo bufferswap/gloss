@@ -261,7 +261,7 @@
 
     (format t "Is datastore consistent? ~A~%" (consistent-attributes-p ds))
 
-    (commit-to-gpu ds)
+    ;;(commit-to-gpu ds)
 
     ;;(inspect ds)
 

@@ -6,6 +6,7 @@
   :license "MIT"
   :description "A system aiming to simplify usage of the modern OpenGL interface."
   :depends-on (#:alexandria
+	       #:sdl2
                #:ieee-floats
                #:static-vectors
                #:cl-opengl)
@@ -23,7 +24,8 @@
                  (:file "layout")
                  (:file "vao")
 		 (:file "datastore")
-                 (:file "test")))
+                 (:file "test")
+		 (:file "example-0")))
                (:module "shader"
                 :components
                 ((:file "shader")))))
