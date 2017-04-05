@@ -175,7 +175,7 @@ return the list."))
      :for attr-desc = (gethash attr-name (descriptors ds))
      :collect (funcall func attr-desc)))
 
-;; TODO: THis is really a stride value.
+;; TODO: THis is really a stride value. Note its meaning for :block is odd.
 (defgeneric attr-group-byte-size (ds)
   (:documentation "How big, in bytes is one complete grouping of the elements
 describes in the template of the datastore. This includes the (possible)
@@ -1076,6 +1076,18 @@ locations of the coalesced data."
 
 (defgeneric commit-to-gpu (ds &key &allow-other-keys)
   (:documentation "Upload the datastore to the GPU using glBufferData()."))
+
+
+
+
+
+;; TODO: In the :block format, things like the offset of the start of the
+;; attributes are effectively with respect to the "coalesced" format of
+;; the attribute data. So, in the interface, there is a discrepancy between
+;; start offsets of attributes and whatnot between coalesced and non-colaesced
+;; depending upon your viewpoint of the data.
+;;
+;; SO, if I don't allow the user access to the interesting
 
 (defmethod commit-to-gpu ((ds native-datastore) &key (ensure-consistency-p T))
   ;; -1. This function assumes any external opengl state is set up when

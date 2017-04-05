@@ -272,7 +272,7 @@ void main() {
                               200.0 200.0 0.0     255 255
                               )))
 
-               ;; we intentionally put this in a seperate vbo.
+               ;; we intentionally put this in a separate vbo.
                #++(glvert-colors (float-vector->static-vector
                                   #(1.0 1.0 1.0 1.0
                                     1.0 1.0 1.0 1.0
@@ -383,7 +383,10 @@ void main() {
           (gl:enable-vertex-attrib-array pos-attr)
           (gl:vertex-attrib-pointer
            pos-attr 3 :float :false
-           (attr-group-byte-size ds-verts)
+           (attr-group-byte-size ds-verts) ;; This is wrong for :block.
+	   ;;12 ;; for :block
+
+
            #++(+
                ;; 3 for position
                (* 3 (cffi:foreign-type-size :float))
@@ -397,14 +400,20 @@ void main() {
           (gl:enable-vertex-attrib-array uv-attr)
           (gl:vertex-attrib-pointer
            uv-attr 2 :unsigned-byte :true
-           (attr-group-byte-size ds-verts)
+           (attr-group-byte-size ds-verts) ;; this is wrong for :block
+	   ;; 2 ;; for :block
+
+
            #++(+
                ;; 3 for position
                (* 3 (cffi:foreign-type-size :float))
                ;; 2 for uv
                (* 2 (cffi:foreign-type-size :unsigned-char)))
            ;; start of first uv after position.
-           (attr-start-byte-offset ds-verts 'uv)
+
+	   (attr-start-byte-offset ds-verts 'uv)
+	   ;;(* 12 6) ;; TODO This should be correct for the _coalessced_ :block
+
            #++(* 3 (cffi:foreign-type-size :float)))
 
           ;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;
