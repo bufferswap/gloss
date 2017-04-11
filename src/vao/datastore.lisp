@@ -72,6 +72,14 @@
    (%max-defined-index :initarg :max-defined-index
                        :initform -1
                        :accessor max-defined-index)
+
+   ;; The gl:get-attrib-location for this particular attribute.
+   ;; This is by the user.
+   (%raw-attrib-location :initarg :raw-attrib-location
+                         :initform -1
+                         :accessor raw-attrib-location)
+   ;; TODO Add in if the uniform location should be enabled or not.
+
    ))
 
 (defgeneric num-attrs (attr-desc)
@@ -165,6 +173,7 @@ into the datastore with which this ATTR-DESC is associated."))
   (attribute-set (layout-set ds)))
 
 
+
 (defgeneric map-attr-descs (func ds)
   (:documentation "Map the FUNC across the attribute descriptors in
 the order of the attribute template specification in datastore DS and
@@ -196,8 +205,18 @@ this datastore."))
     (when present-p
       (offset desc))))
 
+;; dealing with attrib locations.
+(defmethod attrib-location (ds attr-name)
+  (multiple-value-bind (desc present-p)
+      (gethash attr-name (descriptors ds))
+    (when present-p
+      (attrib-location desc))))
 
-
+(defmethod (setf attrib-location) (newval ds attr-name)
+  (multiple-value-bind (desc present-p)
+      (gethash attr-name (descriptors ds))
+    (when present-p
+      (setf (attrib-location desc) newval))))
 
 
 
@@ -697,58 +716,58 @@ properly maintained."))
            ;; don't have to manage dealing with the unused places.
            (replace new-data (data ds)))
           (:block
-              ;; Here, we must recompute the attribute descs and then
-              ;; carefully move the data from the old array at the old
-              ;; offsets to the new array at the new offsets.
+           ;; Here, we must recompute the attribute descs and then
+           ;; carefully move the data from the old array at the old
+           ;; offsets to the new array at the new offsets.
 
-              ;; 1. in template order, get the current offsets for the
-              ;; current size
-              ;;
-              ;; 2. in template order, compute the new offsets for the
-              ;; new size
-              (multiple-value-bind (old-offsets new-offsets)
-                  (construct-new-block-offsets ds new-size)
+           ;; 1. in template order, get the current offsets for the
+           ;; current size
+           ;;
+           ;; 2. in template order, compute the new offsets for the
+           ;; new size
+           (multiple-value-bind (old-offsets new-offsets)
+               (construct-new-block-offsets ds new-size)
 
-                (format t "new size in attr groups: ~A~%" new-size)
-                (format t "old offsets: ~A~%" old-offsets)
-                (format t "new offsets: ~A~%" new-offsets)
+             (format t "new size in attr groups: ~A~%" new-size)
+             (format t "old offsets: ~A~%" old-offsets)
+             (format t "new offsets: ~A~%" new-offsets)
 
-                ;; 3. for each template attribute, REPLACE the strip of data
-                ;; it has from the old array into the new array at the right
-                ;; offset for the expanded size.
-                (loop
-                   :for name :in (template (named-layout ds))
-                   :for old-off :in old-offsets
-                   :for new-off :in new-offsets
-                   :for desc = (gethash name (descriptors ds))
-                   ;; The total number of possibly defined bytes
-                   ;; devoted strictly and contiguously to NAME's
-                   ;; data.
-                   :for total-attr-bytes = (* (size ds)
-                                              (compute-attr-alignment
-                                               (attr desc)
-                                               (named-layout ds)))
-                   :do
-                   (format
-                    t "Copy ~A from byte index range ~A:~A to byte index ~A~%"
-                    name old-off (+ old-off total-attr-bytes)
-                    new-off)
+             ;; 3. for each template attribute, REPLACE the strip of data
+             ;; it has from the old array into the new array at the right
+             ;; offset for the expanded size.
+             (loop
+                :for name :in (template (named-layout ds))
+                :for old-off :in old-offsets
+                :for new-off :in new-offsets
+                :for desc = (gethash name (descriptors ds))
+                ;; The total number of possibly defined bytes
+                ;; devoted strictly and contiguously to NAME's
+                ;; data.
+                :for total-attr-bytes = (* (size ds)
+                                           (compute-attr-alignment
+                                            (attr desc)
+                                            (named-layout ds)))
+                :do
+                (format
+                 t "Copy ~A from byte index range ~A:~A to byte index ~A~%"
+                 name old-off (+ old-off total-attr-bytes)
+                 new-off)
 
-                   (replace new-data (data ds)
-                            :start1 new-off
-                            :start2 old-off :end2 (+ old-off total-attr-bytes)))
+                (replace new-data (data ds)
+                         :start1 new-off
+                         :start2 old-off :end2 (+ old-off total-attr-bytes)))
 
-                ;; 4. Store the new offsets into the attr descs, I can't
-                ;; really call GEN-ATTRIBUTE-DESCRIPTORS again when the
-                ;; size is changed cause I need all the other data in
-                ;; there to be left alone.
-                ;;
-                ;; TODO: Meh, this is kinda nasty to just jam them in here.
-                (loop :for name :in (template (named-layout ds))
-                   :for new-off :in new-offsets :do
-                   (setf (offset (gethash name (descriptors ds))) new-off))
+             ;; 4. Store the new offsets into the attr descs, I can't
+             ;; really call GEN-ATTRIBUTE-DESCRIPTORS again when the
+             ;; size is changed cause I need all the other data in
+             ;; there to be left alone.
+             ;;
+             ;; TODO: Meh, this is kinda nasty to just jam them in here.
+             (loop :for name :in (template (named-layout ds))
+                :for new-off :in new-offsets :do
+                (setf (offset (gethash name (descriptors ds))) new-off))
 
-                )))
+             )))
 
         ;; free the native array!
         (static-vectors:free-static-vector (data ds))
@@ -1122,7 +1141,6 @@ locations of the coalesced data."
        (static-vectors:static-vector-pointer (data ds))
        ;; And the usage hint, :static-draw, etc
        (usage-hint (properties (named-layout ds))))
-
 
       ;; 3. Post process the buffer after upload. In the case of
       ;; :interleave and :separate, this is a nop. In the case of
