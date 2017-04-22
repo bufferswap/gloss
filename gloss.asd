@@ -23,6 +23,7 @@
                  (:file "attributes")
                  (:file "layout")
                  (:file "vao")
+		 (:file "array-ops")
 		 (:file "datastore")
                  (:file "test")
 		 (:file "example-0")))
