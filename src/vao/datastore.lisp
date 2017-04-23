@@ -141,6 +141,13 @@ into the datastore with which this ATTR-DESC is associated."))
                   :reader resizeable-p)
    ))
 
+;; This derived type of datastore has methods on it to understand the
+;; fact that this type represents binary level attribute layouts in
+;; native machine memory arrays (such as static-vectors) which are
+;; suitable for upload to the GPU.
+(defclass datastore-array-buffer (datastore) ())
+
+
 (defclass datastore-array-buffer (datastore) ())
 (defclass datastore-element-array-buffer (datastore) ())
 (defclass datastore-copy-buffer (datastore) ())
@@ -154,11 +161,6 @@ into the datastore with which this ATTR-DESC is associated."))
 (defclass datastore-dispatch-indirect-buffer (datastore) ())
 (defclass datastore-shader-storage-buffer (datastore) ())
 
-;; This derived type of datastore has methods on it to understand the
-;; fact that this type represents binary level attribute layouts in
-;; native machine memory arrays (such as static-vectors) which are
-;; suitable for upload to the GPU.
-(defclass native-datastore (datastore) ())
 
 (defgeneric named-layout (ds)
   (:documentation "Get the named-layout datastore DS is referencing."))
@@ -230,12 +232,12 @@ this datastore."))
 ;; TODO: This returns a datastore to store the data appropriate for
 ;; the definition of the datastore-name whose data type is
 ;; always unsigned-byte.
-(defun make-native-datastore (datastore-name layout-set
+(defun make-datastore-array-buffer (datastore-name layout-set
                               &key (size 1024) (resizeable-p NIL))
   "Return a datastore which will store attribute data found in LAYOUT-SET
 and identified by DATASTORE-NAME. The keyword arguments :SIZE defaults to 1024
 and :RESIZEABLE-P defaults to NIL."
-  (let* ((datastore (make-instance 'native-datastore
+  (let* ((datastore (make-instance 'datastore-array-buffer
                                    :name datastore-name
                                    :layout-set layout-set
                                    :size size
@@ -268,7 +270,7 @@ datastore DS."))
 (defmethod destroy-datastore (ds)
   (setf (data ds) NIL))
 
-(defmethod destroy-datastore ((ds native-datastore))
+(defmethod destroy-datastore ((ds datastore-array-buffer))
   (when (data ds)
     (static-vectors:free-static-vector (data ds))
     (setf (data ds) NIL)))
@@ -326,7 +328,7 @@ which will be used to store (possibly) aligned attribute data."
 of attribute descriptors for which the DS is responsible for maintaing the
 storage."))
 
-(defmethod gen-attribute-descriptors ((ds native-datastore)
+(defmethod gen-attribute-descriptors ((ds datastore-array-buffer)
                                       (kind (eql :interleave)))
   (let* ((named-layout (named-layout ds))
          (attr-set (attr-set ds))
@@ -368,7 +370,7 @@ storage."))
     ;; Then, set the hash table into the datastore.
     (setf (descriptors ds) attribute-desc-table)))
 
-(defmethod gen-attribute-descriptors ((ds native-datastore)
+(defmethod gen-attribute-descriptors ((ds datastore-array-buffer)
                                       (kind (eql :separate)))
   ;; We only need 1 attribute-descriptor for a :separate datastore since there
   ;; is only 1 attribute to ever worry about.
@@ -393,7 +395,7 @@ storage."))
     (setf (descriptors ds) attribute-desc-table)))
 
 ;; We do different things depending if the datastore is resizeable.
-(defmethod gen-attribute-descriptors ((ds native-datastore)
+(defmethod gen-attribute-descriptors ((ds datastore-array-buffer)
                                       (kind (eql :block)))
 
   (let* ((named-layout (named-layout ds))
@@ -497,7 +499,7 @@ alter any data in DS."
   (:documentation "Resize a data store and ensure the new data is
 properly maintained."))
 
-(defmethod resize ((ds native-datastore))
+(defmethod resize ((ds datastore-array-buffer))
   (let ((ds-kind (data-format (properties (named-layout ds)))))
 
     (format t "Resizing a ds of kind ~A~%" ds-kind)
@@ -595,7 +597,7 @@ properly maintained."))
   (:documentation "Return the data for attribute NAME at INDEX in the datastore DS. If COMPONENTS is supplied, then produce a swizzle as desired. Always
 returns a newly allocated vector."))
 
-(defmethod attr-ref ((ds native-datastore) name index &rest components)
+(defmethod attr-ref ((ds datastore-array-buffer) name index &rest components)
   ;; 1. Find the attribute descriptor for NAME.
   (let ((attr-desc (gethash name (descriptors ds))))
 
@@ -657,7 +659,7 @@ returns a newly allocated vector."))
 (defgeneric (setf attr-ref) (comp-vec ds name index &rest components)
   (:documentation "DOCUMENT ME."))
 
-(defmethod (setf attr-ref) (comp-vec (ds native-datastore) name index
+(defmethod (setf attr-ref) (comp-vec (ds datastore-array-buffer) name index
                             &rest components)
   ;; 1. Find the attribute descriptor for NAME.
   (let ((attr-desc (gethash name (descriptors ds))))
@@ -758,7 +760,7 @@ returns a newly allocated vector."))
 TODO: Describe consistency (basically it means all attribute groups up to
 the max index set are defined)."))
 
-(defmethod consistent-attributes-p ((ds native-datastore))
+(defmethod consistent-attributes-p ((ds datastore-array-buffer))
   (let ((max-indices-list
          (loop :for desc :being :the :hash-values :in (descriptors ds)
             :collect (max-defined-index desc))))
@@ -917,7 +919,7 @@ locations of the coalesced data."
 ;;
 ;; SO, if I don't allow the user access to the interesting
 
-(defmethod commit-to-gpu ((ds native-datastore) &key (ensure-consistency-p T))
+(defmethod commit-to-gpu ((ds datastore-array-buffer) &key (ensure-consistency-p T))
   ;; -1. This function assumes any external opengl state is set up when
   ;; it does the buffer data bit. Meaning, the vbo (or whatever other)
   ;; bindings must be bound before uploading the data.

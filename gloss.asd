@@ -19,7 +19,8 @@
                  (:file "conditions")))
                (:module "vao"
                 :components
-                ((:file "conditions")
+                ((:file "package")
+		 (:file "conditions")
                  (:file "attributes")
                  (:file "layout")
                  (:file "vao")

@@ -246,17 +246,19 @@ void main() {
                (ebo (gl:gen-buffer))
 
                (layout-set (example-0-layout))
-               (ds-verts (make-native-datastore 'vertex
+               (ds-verts (make-datastore-array-buffer 'vertex
                                                 layout-set
                                                 :resizeable-p T))
-               (ds-colors (make-native-datastore 'color
+               (ds-colors (make-datastore-array-buffer 'color
                                                  layout-set
                                                  :resizeable-p T))
-               (ds-ebo-elems (make-native-datastore 'indicies
+               (ds-ebo-elems (make-datastore-array-buffer 'indicies
                                                     layout-set
                                                     :resizeable-p T))
 
-               (texunit (load-bmp-to-gl-texture "alignment.bmp"))
+	       (texpath (asdf:system-relative-pathname 'gloss
+					 #p"src/vao/alignment.bmp"))
+               (texunit (load-bmp-to-gl-texture texpath))
 
                ;; Two distinct triangles forming a square around the origin.
                #++(glverts (;;float-vector->static-vector

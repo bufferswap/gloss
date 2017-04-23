@@ -164,7 +164,7 @@
 
 (defun test-1 ()
   (let* ((layout-set (test-ds-layout))
-         (ds (make-native-datastore 'vertex layout-set :size 4)))
+         (ds (make-datastore-array-buffer 'vertex layout-set :size 4)))
     (setf (attr-ref ds 'position 0) #(1.0 1.0 1.0))
     (setf (attr-ref ds 'normal 0) #(4.0 5.0 6.0))
     (setf (attr-ref ds 'uv 0) #(0 0))
@@ -210,7 +210,7 @@
 (defun test-2 ()
   (let* ((num-tris 1024)
          (layout-set (test-ds-layout))
-         (ds (make-native-datastore 'vertex layout-set
+         (ds (make-datastore-array-buffer 'vertex layout-set
                                     :size (* num-tris 3)
                                     :resizeable-p NIL)))
 
@@ -243,7 +243,7 @@
 (defun test-3 ()
   (let* ((num-tris 16)
          (layout-set (test-ds-layout))
-         (ds (make-native-datastore 'bvertex layout-set
+         (ds (make-datastore-array-buffer 'bvertex layout-set
                                     :size (* num-tris 3)
                                     :resizeable-p T)))
 
