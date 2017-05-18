@@ -6,6 +6,9 @@
   :license "MIT"
   :description "A system aiming to simplify usage of the modern OpenGL interface."
   :depends-on (#:alexandria
+	       #:sdl2
+               #:ieee-floats
+               #:static-vectors
                #:cl-opengl)
   :pathname "src"
   :serial t
@@ -16,12 +19,15 @@
                  (:file "conditions")))
                (:module "vao"
                 :components
-                ((:file "conditions")
+                ((:file "package")
+		 (:file "conditions")
                  (:file "attributes")
                  (:file "layout")
                  (:file "vao")
+		 (:file "array-ops")
 		 (:file "datastore")
-                 (:file "test")))
+                 (:file "test")
+		 (:file "example-0")))
                (:module "shader"
                 :components
                 ((:file "shader")))))
