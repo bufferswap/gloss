@@ -1,0 +1,1932 @@
+#+CATEGORY GameDev
+#+FILETAGS: CODE dev
+
+* gloss
+=gloss=, short for *OpenGL Object Streamlining System*, is a system aiming to
+simplify usage of various modern OpenGL interfaces.
+** Components
+The following is by no means an exhaustive list of the functionality this
+library should provide. These also will be the names of the Common Lisp packages
+within the =gloss= system.
++ =vertex=
++ =shader=
++ =texture=
+** Tasks
+*** DONE Rename this project
+CLOSED: [2016-10-27 Thu 03:51]
+The new name of this project is GLOSS for GL Object Streamlining System. This
+project represents a pile of boilerplate that streamlines the use of the modern
+OpenGL API.
+*** DONE Rename the VAO package
+CLOSED: [2016-10-27 Thu 04:28]
+:LOGBOOK:
+- State "FIXED"      from "TODO"       [2016-10-27 Thu 04:28] \\
+  Renamed from vao to vertex.
+:END:
+I think it would go a long way /not/ using three-letter acronyms ubiquitous
+throughout OpenGL to name something the user sees, except for low-level stuff.
+The package name should descriptively name what it provides, not something that
+someone new to OpenGL has to Google to find out what it is.
+*** TODO Decide on support for the following types
+These vertex data types are questionable to include in this library.
+
+If we do happen to include support for them, edit the =Available Types=
+section under the =define-vertex-attributes= API below.
+
++ =:fixed= :: 16.16-bit fixed-point two's complement value. I am not sure
+            if anyone even uses these anymore and they are just residual
+            legacy types in the spec. Additionally, these are very hard
+            to get right, and trade-offs have to be made, and lots of
+            edge-cases to consider when building a robust fixed-point
+            math library.
++ =:double= :: A floating-point with 64 bits of precision. There are a
+             couple reasons not to include this type: It is a performance
+             trap and recommended in the community not to ever use them,
+             as well as having a requirement of OpenGL 4.1 to even do so.
++ =:int-2-10-10-10-rev=, =:unsigned-int-2-10-10-10-rev= :: Specialty
+     types. See [[https://www.opengl.org/wiki/Vertex_Specification#Component_type][Component Type]].
++ =:unsigned-int-10f-10f-11f-rev= :: Specialty type which requires OpenGL
+     4.4 to use. See [[https://www.opengl.org/wiki/Vertex_Specification#Component_type][Component Type]].
+** Implementation Plan
+*** INPROGRESS gloss.vertex-data
+The =gloss.vertex-data= package manages arrays to hold vertex data.
+We implement it as a functional interface to create and maintain
+a couple objets that represent the data store.
+**** Default values
+There are default values for various parts of the API, if not explicitly
+overridden by the user.
+***** Attributes
++ :divisor = 0
++ :type = float
++ :count = 1
++ :normalize = nil
++ :accessors = N/A
++ :location = N/A
+***** Datastore Properties
++ :format = :separate
++ :buffer-binding-target = :array-buffer
++ :usage-hint = :static-draw
+**** Validity of values
+There are some values for various parts of the OpenGL API that have restrictions
+that must be validated, as to never allow the user to specify a value that is
+not valid.
++ glVertexAttribPointer must have its =normalized= parameter set the =nil= if =type=
+  is one of: =:half-float=, =:float=, =:double=, or =:fixed=.
++ glVertexAttribPointer must not have its =type= parameter set to =:double=. This is
+  legal but bad practice and only available with an OpenGL 4.1 context.
++ glVertexAttribPointer must only have its =type= parameter set to
+  =GL_UNSIGNED_INT_10F_11F_11F_REV= if an Open GL 4.4 context is available.
++ =define-vertex-attributes= must ensure each attribute name is unique.
+**** API
+***** Function GLOSS:MAKE-ATTRIBUTE-SET
+Returns an object called an "attribute set" which will contain
+individual vertex attributes and their format. You must pass
+attribute forms to this function. No forms is an error.
+****** Overview
++ Separated from OpenGL layout information.
++ Attribute names /must/ be unique within the returned object.
++ Can call more than once to make different specification objects
+  contianing different attributes.
++ Internally, this is stored as a hash table of
+  name->attribute/data.
++ Defines the following for each attribute, using default values as
+  described above:
+  + =:location= :: An integer indicating the location
+                 position when this attribute is
+                 referenced in the shaders. If no
+                 attributes have this then it is
+                 automatically generated in the reading
+                 order of the attributes, if one has it,
+                 then all must have it. THey don' thave to
+                 be unique, but if they aren't then only
+                 ONE attribute in that set can be enabled
+                 duing an upload to the GPU. This can be
+                 overridden at a later time jsut before
+                 upload too.
+  + =:type= :: OpengGL Data type
+  + =:count= :: Number of sub-components
+  + =:normalize= :: Whether or not to normalize the sub-components
+                  into a [0.0,1.0] float interval
+  + =:divisor= :: The instancing divisor integer, or 0 for no
+                instancing
+  + =:accessors= :: A list of symbols which must be :count long that
+                  represents names for the components of an
+                  attribute. Used in the Accessors API.
+
+                  Example:
+
+                  #+BEGIN_SRC common-lisp
+                  '(color :type float :count 4 :accessors (r g b a))
+                  #+END_SRC
+****** Available Types
+Each attribute defined has a =:type=, which defaults to =:float=. The
+type of an attribute refers to the data type stored in the buffer
+according to OpenGL. All available types are the following:
++ =:half-float= :: Floating-point with 16 bits of precision.
+                 [6.10*10e-5,6.55*10e4]
++ =:float= :: Floating-point with 32 bits of precision.
+            [1.17549*10e-38,3.40282*10e38]
++ =:double= :: NOT IMPLEMENTED by design.
++ =:byte= :: Signed integer with 8 bits of precision. [-128,127]
++ =:unsigned-byte= :: Unsigned integer with 8 bits of
+                    precision. [0,255]
++ =:short= :: Signed integer with 16 bits of
+            precision. [−32768,32767]
++ =:unsigned-short= :: Unsigned integer with 16 bits of
+     precision. [0,65535]
++ =:int= :: Signed integer with 32 bits of
+          precision. [−2147483648,2147483647]
++ =:unsigned-int= :: Unsigned integer with 32 bits of
+                   precision. [0,4294967295]
++ =:int_2_10_10_10_rev= ::  A series of four values packed in a
+     32-bit unsigned integer. Each individual packed value is a
+     two's complement signed integer, but the overall bitfield is
+     unsigned. The bitdepth for the packed fields are 2, 10, 10,
+     and 10, but in reverse order. So the lowest-significant
+     10-bits are the first component, the next 10 bits are the
+     second component, and so on. If you use this, the =:count=
+     must be 4.
++ =:unsigned_int_2_10_10_10_rev= :: A series of four values packed in
+     a 32-bit unsigned integer. The packed values are unsigned. The
+     bitdepth for the packed fields are 2, 10, 10, and 10, but in
+     reverse order. So the lowest-significant 10-bits are the first
+     component, the next 10 bits are the second component, and so
+     on. If you use this, the =:count= must be 4.
++ =:unsigned_int_10f_11f_11f_ref= :: Requires OpenGL 4.4. This
+     represents a 3-element vector of floats, packed into a 32-bit
+     unsigned integer. The bitdepth for the packed fields is 10,
+     11, 11, but in reverse order. So the lowest 11 bits are the
+     first component, the next 11 are the second, and the last 10
+     are the third. These floats are the low bitdepth floats,
+     packed exactly like the image format GL_R11F_G11F_B10F. If you
+     use this, the =:count= must be 3.
+****** Example of GLOSS:MAKE-ATTRIBUTE-SET
+Here we denote probably the common case of using this function.
+
+#+BEGIN_SRC common-lisp
+(let ((attr-set
+       (gloss:make-attribute-set
+        ;; We pass in a &rest arg the attributes we want in this attribute set.
+        '(position :type :float :count 3 :accessors (px py pz))
+        '(normal :type :float :count 3 :accessors (nx ny nz))
+        '(uv :type :float :count 3 :accessors (uvx uvy uvz)))
+        '(some-attr-1 :type :unsigned-short :count 2 :divisor 1)
+        '(some-attr-2 :type :unsigned-int :normalize t)))
+
+  attr-spec-set)
+
+#+END_SRC
+****** Possible higher level macro interface GLOSS:DEFINE-VERTEX-ATTRIBUTES
+If we build the macro interface, then this example can be
+implemented with the above functiona API interface using
+vertex-attributes as a key in a hash table with a value of the
+attribute-specification-set. Alternatively, it could expand into
+the above interface and return the attribute specification set
+object.
+#+BEGIN_SRC common-lisp
+(define-vertex-attributes vertex-attributes ()
+  (position :type :float :count 3 :accessors (px py pz))
+  (normal :type :float :count 3 :accessors (nx ny nz))
+  (uv :type :float :count 3 :accessors (uvx uvy uvz))
+  (some-attr-1 :type :unsigned-short :count 2 :divisor 1)
+  (some-attr-2 :type :unsigned-int :normalize t))
+#+END_SRC
+***** Function GLOSS:MAKE-LAYOUT-SET
+The arguments to =GLOSS:MAKE-LAYOUT-SET= are:
+
+/The attribute set./
+/The default primitive./
+/A &rest list of =datastore-specifications=./
+
+It returns a:
+/layout-set/ structure.
+
+The purpose of this function is to return a layout-set
+structure which has within it an understanding of how to
+create datastore buffers, and how they are formatted.
+
+The layout-set is accepted by =make-vao= and is stored in the
+returned vao-instance. This allows the data-manager, which
+accepts the vao-instance, to allocate and correctly fill the
+internal datastore buffers.
+
+Here is an example of =GLOSS:MAKE-LAYOUT-SET= used right after the
+attr-set had been created. Some information that is usually defaulted
+is present in these forms to show a richer use of the API.
+
+#+BEGIN_SRC common-lisp
+(let* ((attr-set
+        (gloss:make-attribute-set
+         ;; TODO: Add in :location which defaults to reading
+         ;; order. If one attribute uses it, all must use it.
+         ;; They can be non-unique, but then those two must never be
+         ;; active at the same time when uploading to the GPU.
+         '(position :type :float :count 3 :accessors (px py pz))
+         '(normal :type :float :count 3 :accessors (nx ny nz))
+         '(uv :type :float :count 3 :accessors (uvx uvy uvz))))
+
+       (layout-set
+
+        (gloss:make-layout-set
+         ;; The attr-set we will draw from and the default
+         ;; primitives to render.
+         attr-set :triangles
+
+         ;; A single Datastore Specification
+         '( ;; Datastore properties
+           ((:format :seperate)
+            (:binding-target :array-buffer)
+            (:usage-hint :static-draw))
+
+           ;; One or more Named Datastore Layouts
+           (vertices (position normal uv))))))
+
+  <do stuff>)
+#+END_SRC
+
+Calling GLOSS:MAKE-LAYOUT-SET with no
+datastore-specifications is an error. There must be at least
+one datastore-specification. This is becuase one cannot add
+to or remove specifications at runtime at this time.
+
+****** Datastore Specification
+A datastore specification describes two pieces of
+information. In BNF form, the format of a Datastore Specification
+is:
+
+#+BEGIN_EXAMPLE
+datastore-spec := ( datastore-properties datastore-layouts )
+datastore-properties := ( datastore-property+ )
+datastore-property := ( key value )
+key := :format | :binding-target | :usage-hint
+value := <see below>
+datastore-layouts := named-datastore-layout+
+named-datastore-layout := ( datastore-name datastore-template )
+datastore-name := <symbol>
+datastrore-template := ( <attribute-name>+ )
+#+END_EXAMPLE
+
+It is possible to use an attribute name more than once in
+different datastores. This has a side-effect of forcing
+qualification of that attribute name when use in the
+incoming DSL or data-manager allocation API. More on that
+later.
+
+******* Datastore Properties.
+These properties are contained in a list of (key value)
+pairs. They define a context in which named layouts will
+be created and used.
+******** Key =:format=
+This key has no default and must always be specified.
+
+Legal values:
++ =:separate= :: Each named buffer will hold a single
+               attribute.
++ =:interleave= :: Each named buffer can hold multiple
+                 attributes that are layed out in a
+                 round robin fashion in the actual
+                 datastore buffer.
++ =:block= :: Each named buffer will hold the attributes
+            such that all of the first attributes data
+            are sequentially in the array, followed
+            sequentially by all of the second
+            attribute data, followed by all of the
+            third attribute data, and so on.
+******** Key =:binding-target=
+The default value for thie key is =:array-buffer=.
+
+Legal Values: /NOTE: opengl version validity unknown./
++ =:array-buffer= :: Vertex attributes
++ =:atomic-counter-buffer= :: Atomic counter storage
++ =:copy-read-buffer= :: Buffer copy source
++ =:copy-write-buffer= :: Buffer copy destination
++ =:dispatch-indirect-buffer= :: Indirect compute dispatch commands
++ =:draw-indirect-buffer= :: Indirect command arguments
++ =:element-array-buffer= :: Vertex array indices
++ =:pixel-pack-buffer= :: Pixel read target
++ =:pixel-unpack-buffer= :: Texture data source
++ =:query-buffer= :: Query result buffer
++ =:shader-storage-buffer= :: Read-write storage for shaders
++ =:texture-buffer= :: Texture data buffer
++ =:transform-feedback-buffer= :: Transform feedback buffer
++ =:uniform-buffer= :: Uniform block storage
+******** Key =:usage-hint=
+Usage hints indicate to OpenGL how the datastore
+buffers will be used. These are hints and some video
+cards ignore them.  However, they are in the Opengl
+Spec and must be specified.  The portion to the left
+of the - indicates the frequency/modification/usage of
+the access, and the portion on the right of the -
+indicates the nature of that access.
+
+The default value for this key is =:static-draw=.
+
+Legal values:
++ =:stream-draw=
++ =:stream-read=
++ =:stream-copy=
++ =:static-draw=
++ =:static-read=
++ =:static-copy=
++ =:dynamic-draw=
++ =:dynamic-read=
++ =:dynamic-copy=
+******** Example Datastore Properties form:
+ #+BEGIN_SRC common-lisp
+ ((:format :block)
+  (:binding-target :array-buffer)
+  (:usage-hint :static-draw))
+ #+END_SRC
+******* Named Datastore Layouts.
+The =named-datastore-layout= form does two things: it names a
+individual datastore buffer that will hold real data,
+and it determines the actual layout of that attributes in that
+datastore.
+
+Let's present an example, assuming the
+datastore-property of =:format= for this
+name-datastore-layout has a value of =:interleaved=
+
+#+BEGIN_EXAMPLE
+(vertices (postion normal uv))
+#+END_EXAMPLE
+
+In the above example, =vertices= is the name of one
+datastore buffer that will hold real data. The format of
+that buffer is a round robin placement of attributes
+position, normal and uv. So, the actual allocated array
+will hold the data in this manner:
+
+#+BEGIN_EXAMPLE
+#(position0 normal0 uv0 position1 normal1 uv1 ....)
+#+END_EXAMPLE
+
+******** Legality of Datastore-Templates
+The attribute names inside of a datastore-template is
+restricted buy the =:format= datastore-property.  Here
+is a denoting of all combinations and their meaning.
+We specify a =datastore-specification= and then
+interpret it.
+
+#+BEGIN_SRC common-lisp
+;; Example 1
+'(((:format :interleave))
+  (name (a)))
+;; This means ONE datastore array named 'name' that looks like this:
+;; Datastore NAME is:
+#(a0 a1 a2 ... aN)
+
+;; Example 2
+'(((:format :interleave))
+  (name (a b)))
+;; This means ONE datastore array that looks like this:
+;; Datastore NAME is:
+#(a0 b0 a1 b1 ... aN bN)
+
+;; Example 3
+'(((:format :interleave))
+  (name (a b c)))
+;; This means ONE datastore array that looks like this:
+;; Datastore NAME is:
+#(a0 b0 c0 a1 b1 c1 ... aN bN cN)
+
+;; Example 4
+'(((:format :interleave))
+  (name1 (a b c))
+  (name2 (d e f g)))
+;; This means TWO datastore arrays that look like this:
+;; Datastore NAME1 is:
+#(a0 b0 c0 a1 b1 c1 ... aN bN cN)
+;; Datastore NAME2 is:
+#(d0 e0 f0 g0 d1 e1 f1 g1 .... dN eN fN gN)
+
+;; Example 5
+'(((:format :block))
+  (name (a)))
+;; This means ONE datastore array that looks like this:
+;; Datastore NAME is:
+#(a0 a1 a2 a3 ... aN)
+
+;; Example 6
+'(((:format :block))
+  (name (a b)))
+;; This means ONE datastore array that looks like this:
+;; Datastore NAME is:
+#(a0 a1 a2 ... aN b0 b1 b2 ... bN)
+
+;; Example 7
+'(((:format :block))
+  (name1 (a b))
+  (name2 (c d e)))
+;; This means TWO datastore arrays that look like this:
+;; Datastore NAME1 is:
+#(a0 a1 a2 ... aN b0 b1 b2 ... bN)
+;; Datastore NAME2 is:
+#(c0 c1 c2 ... cN d0 d1 d2 ... dN e0 e1 e2 ... eN)
+
+;; Example 8
+'(((:format :separate))
+  (name (a)))
+;; This means ONE datastore array that looks like this:
+;; Datastore NAME is:
+#(a0 a1 a2 ... aN)
+
+;; Example 9
+'(((:format :separate))
+  (name1 (a))
+  (name2 (b))
+  (name3 (c)))
+;; This means THREE datastore arrays that look like this:
+;; Datastore NAME1 is:
+#(a0 a1 a2 ... aN)
+;; Datastore NAME2 is:
+#(b0 b1 b2 ... bN)
+;; Datastore NAME3 is:
+#(c0 c1 c2 ... cN)
+
+;; Example 10
+'(((:format :separate))
+  (name (a b c)))
+;; This is illegal, there can only be one attribute name in a
+;; datastore-template when :foramt has a value of :separate.
+#+END_SRC
+
+****** INPROGRESS Implementation Notes
+
+The returned object is:
+
+#+BEGIN_SRC common-lisp
+(defstruct layout-set
+  ;; A hash table keyed by named datastore buffers.
+  datastore-layouts
+  ;; A hash table whose keys are unambiguous attribute names
+  ;; and formally scoped attribute names with values of
+  ;; named data store layouts in the above hash.
+  attr-view)
+#+END_SRC
+
+First, we need a defstruct holding datastore properties:
+
+#+BEGIN_SRC common-lisp
+(defstruct datastore-properties
+  format ;; No default
+  (binding-target :array-buffer)
+  (usage-hint :static-draw))
+#+END_SRC
+
+Instead of having one =datastore-properties= structure that
+different =named-datastore-layouts= reference, we'll make a
+copy of it for each (as appropriate)
+=named-datastore-layout=. This prevents us from generating
+names and references for anonymous things, and if we
+decide to perform untime modification of this stuff later,
+it simplifies that since each =datastore-layout= structure
+for every named-datastore is a independent thing.
+
+
+Then, we need a defstruct describing the datastore layout
+itself. This holds a /datastore-properties/ structure in the
+properties slot and the datastore-template list in the /template/
+slot.
+
+#+BEGIN_SRC common-lisp
+(defstruct datastore-layout
+  properties
+  template)
+#+END_SRC
+
+Now we are in a position where we can build the layout-set
+hash table to hold this data and make it so we can look
+stuff up.
+
+The layout-set-datastore-layouts slot contains a hash
+table mapping that looks like this:
+
+=datastore-name -> <datastore-layout structure>=
+
+The <datastore-layout structure> is a structure with
+nested structures in it.
+
+Suppose we have these two datastore specifications being passed to
+GLOSS:MAKE-LAYOUT (and the attributes: position, normal, uv, color,
+have plausible definitions).
+
+#+BEGIN_SRC common-lisp
+'(((:format :interleaved)
+   (:binding-target :array-buffer)
+   (:usage-hint :static-draw))
+
+  (vertices (position normal)))
+
+'(((:format :seperate)
+   (:binding-target :array-buffer)
+   (:usage-hint :static-draw))
+
+  (uvs (uv))
+  (colors (color)))
+#+END_SRC
+
+
+Then here is what the datastore-layouts hash table in the
+layout-set structure will look like.  Notice we
+de-normalized the datastore-properties information to have
+multiple copies for UVS and COLORS.
+
+#+BEGIN_SRC common-lisp
+;; the datastore-layout slot contains this hash.
+'vertices -> #S( :properties
+                #S(:format :interleaved
+                           :binding-target :array-buffer
+                           :usage-hint :static-draw)
+
+                :template
+                '(position normal))
+
+'uvs -> #S( :properties
+           #S(:format :separate
+                      :binding-target :array-buffer
+                      :usage-hint :static-draw)
+
+           :template
+           '(uv))
+
+'colors -> #S( :properties
+              #S(:format :interleaved
+                         :binding-target :array-buffer
+                         :usage-hint :static-draw)
+
+              :template
+              '(color))
+#+END_SRC
+
+Here is the attr-view hash table. For attributes that are
+used once in all named-data-store layouts, the symbol of
+its name will be a key to a symbol value of the name of
+the datastore that contains it. This is used later in the
+incoming DSL for figuring out which datastore should get the
+imcoming data.
+
+In addition to that are the "formal names" of which datastore hold
+an attribute
+
+#+BEGIN_EXAMPLE
+;; attr-name/qualified-attr-name -> name of datastore
+
+;; attr names used in one named-datastore-layout
+'position -> 'vertices
+'normal -> 'vertices
+'uv -> 'uvs
+'color -> 'colors
+
+;; the formal names for ALL referenced attributes in the datastores.
+'(vertices position) -> 'vertices
+'(vertices normal) -> 'vertices
+'(uvs uv) -> 'uvs
+'(colors color) -> 'colors
+#+END_EXAMPLE
+
+Supposing I had used position in BOTH VERTICES and UVS, this
+what that would look like when denoting that attribute's
+datastore name.
+
+#+BEGIN_EXAMPLE
+'(vertices position) -> 'vertices
+'(uvs position) -> 'uvs
+#+END_EXAMPLE
+
+Notice in that case, there is no bare key for just
+'position, since in using that symbol alone, we can't
+resolve which dataastore we're actually referencing.
+
+*NOTE:* This has a direct affect on the incomming DSL
+language in that in all places you can use an attribute
+name you can substitute the "formal name" of that
+attribute (which specifies which datastore specification
+you're referencing).  In places where attributes can be
+uniquely identified, you can just use the shorter name.
+
+*** HOLD shader                                                                 :HOLD:
+:LOGBOOK:
+- State "HOLD"       from ""           [2016-10-27 Thu 23:39] \\
+  Waiting on vertex-data.
+:END:
+*** HOLD texture                                                                :HOLD:
+:LOGBOOK:
+- State "HOLD"       from ""           [2016-10-27 Thu 23:40] \\
+  Waiting on vertex-data.
+:END:
+** WAITING Proposed Package APIs                                                 :WAITING:
+:LOGBOOK:
+- State "WAITING"    from "INPROGRESS" [2016-10-27 Thu 23:38] \\
+  In the process of tearing out stuff for reorganization.
+:END:
+*** gloss.vao API
+**** VAO OpenGL Concepts
+An Opengl VAO is a description of a set of vertex data (referenced
+via VBO indexes stored in the VAO) that stores the format and access
+policy of per vertex data or per object data. A VBO represents a
+source of the vertex data. The one thing that a VAO and VBO do NOT
+store is the actual contents of the data. Those are stored in
+hardware element sized arrays that are committed to the GPU via
+glBindBuffer().
+
+So, I propose separation of the vertex attributes from their layout
+in an array. I also propose a data manager helper object that helps
+maintain and corral the data crossing the GPU memory boundaries.
+
+This API has two major pieces of functionality:
+**** VAO API
+Herein where we describe how attributes and attribute layouts work.
+This ends up describing the complete VAO interface.
+
+Once you define the =vertex attributes= and =vertex layout= forms, they
+cannot be changed and VAO's created against them cannot have their
+values about the attributes or layouts changed during runtime. If you
+need multiple contexts, then make multiple =vertex attribute= forms and
+multiple =vertex layout= forms and choose what you need when you need
+it.
+***** Vertex Attributes
+Here, we define individually named attributes and their format.
+
+We specifically separate them out from any vao layout information.
+
+There can be more than one of these and I can see a need for opengl
+versions that use different types so you can select between
+them. But, we'll encourage ONE in all documentation.
+
+I don't know if this is appropriate to be a macro that keys the
+specified name in a global hash table with the values being the
+attributes, of if it should be a function that processes a list of
+attributes and returns a hash table that you can use later.
+
+First, we define all of the individual attributes that we'll ever
+need and what they are. This says nothing about their ordering, only
+the format of the attribute, how many subcomponents there are, and
+any other atomic aspect of their type (like the normalization). They
+all must be unique per named define-vertex-attributes form.
+
+#+BEGIN_SRC common-lisp
+(define-vertex-attributes all-vertex-attributes ()
+    (index :type :unsigned-short)
+    (position :type float :count 3)
+    (normal :type float :count 3 :accessors (nx ny nz))
+    (uv :type float :count 3)
+    (offsets :type float :count 3)
+    (colors :type float :count 3)
+    (influence :type byte)
+    (data1 :type float :count 3)
+    (data2 :type int :count 2 :normalize nil :divisor 1)
+    (stuff :type float)
+    (thing :type unsigned-int :count 3))
+  #+END_SRC
+***** Layout
+The vertex layouts are named to make it easy to define and allocate
+the backend storage for that attribute set.
+
+Here, we define the layout properties and formatting of a collection
+of vertex attributes. We expect to use the attribute names from the
+named define-vertex-attributes form.  This ends up being very close
+to an opengl VAO specification like in glkit. There can be multiple
+of these forms for different named vertex layout specifications.
+
+We also specify the drqwing primitive for this buffer-layout form
+that will be used (unless overriden at the call site) for all
+draw calls for a vao instance of this layout.
+
+#+BEGIN_SRC common-lisp
+(define-vertex-attribute-buffer-layout (mesh :triangles)
+    (all-vertex-attributes)
+
+  (with-layout-properties
+      ((:format :interleave)
+       (:buffer-binding-target :array-buffer)
+       (:usage-hint :static-draw))
+    ;; The symbol VERTEX is a symbolic name for the internal array represented
+    ;; by attribute name symbols inside the following ( ) list called a
+    ;; "template specifer".
+    ;;
+    ;; A template specifier defines the format for one aggregate set of
+    ;; attributes in the internal array.
+    ;;
+    ;; In this case the template specifier is combining three attributes:
+    ;; (position normal uv). Since the format properties indicate :interleave,
+    ;; the actual data in the single internal array will be layed out in a
+    ;; sequentiallayout like: #(PNUPNUPNU...).
+    ;;
+    ;; The symbolic name of the array-format may be used in the input DSL for
+    ;; buffer-insert and in the allocation api for buffer-allocate. All symbolic
+    ;; names for all array-format property forms must be unique in the same
+    ;; DEFINE-VERTEX-ATTRIBUTE-BUFFER-LAYOUT form.
+    ;;
+    ;; We can have multiple named template specifiers per form, as denoted
+    ;; below.
+    (vertex (position normal uv)))
+
+  ;; second attribute set definition, used as an index to draw the
+  ;; vertex data.
+  (with-layout-properties
+      ((:format :seperate)
+       (:buffer-binding-target :element-array-buffer)
+       (:usage-hint :static-draw))
+    (vertex-indicies (index)))
+
+  ;; third attribute set definition
+  (with-layout-properties
+      ((:format :block)
+       (:buffer-binding-target :array-buffer)
+       (:usage-hint :static-draw))
+    ;; Here we state that the attributes are in a single array like
+    ;; this:
+    ;;
+    ;; #(o1 o2 o3 o4 .... c1 c2 c3 c4 .... i1 i2 i3 i4 ....)
+    (context (offsets colors influence)))
+
+  ;; fourth attribute set definition
+  (with-layout-properties
+      ((:format :separate)
+       (:buffer-binding-target :array-buffer)
+       (:usage-hint :stream-draw))
+    ;; Here, each of the attributes are in their own array. Also each
+    ;; one has its own symbolic name.
+    ;;
+    ;; The first array
+    ;; #(d1_1 d1_2 d1_3 ....)
+    (data1 (data1))
+    ;; The second one
+    ;; #(d2_1 d2_2 d2_3 ....)
+    (data2 (data2))
+    ;; The third one
+    ;; #(t1 t2 t3 ....)
+    (stuff (stuff))
+    ;; The fourth one
+    ;; #(s1 s2 s3 ....)
+    (thing (thing))))
+#+END_SRC
+****** More Examples
+Here are some bare examples of the array template properties in the above
+section. These only describe attribute data and layout. To actually make some
+arrays to hold this data, you need a Buffer Manager object.
+
+#+BEGIN_SRC common-lisp
+;; Example 1
+(with-layout-properties
+    ((:format :interleave))
+  (name (a)))
+;; This means ONE internal array that looks like this:
+#(aaaa....)
+
+;; Example 2
+(with-layout-properties
+    ((:format :interleave))
+  (name (a b)))
+;; This means ONE internal array that looks like this:
+#(abababab....)
+
+;; Example 3
+(with-layout-properties
+    ((:format :interleave))
+  (name (a b c)))
+;; This means ONE internal array that looks like this:
+#(abcabcabc....)
+
+;; Example 4
+(with-layout-properties
+    ((:format :interleave))
+  (name1 (a b c))
+  (name2 (d e f g)))
+;; This means TWO internal arrays that look like this:
+#(abcabcabc...)
+#(defgdefgdefg....)
+
+;; Example 5
+(with-layout-properties
+    ((:format :block))
+  (name (a)))
+;; This means ONE internal array that looks like this:
+#(aaa....)
+
+;; Example 6
+(with-layout-properties
+    ((:format :block))
+  (name (a b)))
+;; This means ONE internal array that looks like this:
+#(aaaaaa.....bbbbbbb.....)
+
+;; Example 7
+(with-layout-properties
+    ((:format :block))
+  (name1 (a b))
+  (name2 (c d e)))
+;; This means TWO internal arrays that look like this:
+#(aaa...bbb...)
+#(ccc...ddd...eee)
+
+;; Example 8
+(with-layout-properties
+    ((:format :separate))
+  (name (a)))
+;; This means ONE internal array that looks like this:
+#(aaaa...)
+
+;; Example 9
+(with-layout-properties
+    ((:format :separate))
+  (name1 (a))
+  (name2 (b))
+  (name3 (c)))
+;; This means THREE internal array that look like this:
+#(aaa...)
+#(bbb...)
+#(ccc...)
+
+;; Example 10
+(with-layout-properties
+    ((:format :separate))
+  (name (a b c)))
+;; This is illegal, there can only be one attribute template in a
+;; :separate array template specifier.
+#+END_SRC
+***** Querying Information About Attributes and Layouts
+****** Querying About Vertex Attributes
+There is one function to get read-only data about a Vertex
+Attribute.
+
+#+BEGIN_SRC common-lisp
+(vao-attribute-info named-attribute-form &optional attribute-name)
+
+;; returns a list of structures defined to be:
+
+(defstruct attribute
+  ;; the name of the DEFINE-VERTEX-LAYOUT form
+  define-vertex-attributes-name
+  ;; The actual form used in the DEFINE-VERTEX-LAYOUT form
+  definition-form
+  ;; The name of the attribute
+  name
+  ;; The divisor number
+  divisor
+  ;; The type of the attribute
+  type
+  ;; How many components there are
+  count
+  ;; Should this attribute be normalized
+  normalize
+  ;; the form holding the accessors for this attribute.
+  accessors)
+#+END_SRC
+
+If attribute-name is defined, return a list with one structure
+entry in it for the requested attribute.
+
+If attribute-name is NIL, then return a list of ALL attribute
+structures defined by the named define-vertex-attributes form.
+****** Querying about Vertex Layouts
+There is one function to get read-only data about a layout.
+
+#+BEGIN_SRC common-lisp
+(vao-layout-info named-layout-form &optional named-layout)
+
+;; return a list of structures defined to be:
+
+(defstruct layout
+  ;; The name of the DEFINE-VERTEX-LAYOUT form this layout resides in
+  define-vertex-layout-name
+  ;; The template form associated with this named layout
+  template-form
+  ;; The format of the layout
+  format
+  ;; The buffer binding target of the layout
+  buffer-binding-target
+  ;; The primitive that this buffer shall be treated as when appropriate
+  primitive
+  ;; How this access pattern should be for this form
+  usage-hint)
+#+END_SRC
+
+If named-layout is define, then the list contains one entry for the
+requested named-layout.
+
+If named-layout is NIL, then ALL named-layouts for that
+define-vertex-layout form are returned in a list.
+***** Making a VAO
+After the =Vertex Attributes= and the =Vertex Layout= is complete, we can
+make an instance of a named =Vertex Layout=. That instance represents
+the VAO from opengl that describes what kind of attributes are going
+to be present and what the layout will be for the shader.  The
+created VAO has internal settings that can be altered just for that
+VAO object.
+
+Here is how we make a vao instance for the above Vertex Layout:
+
+#+BEGIN_SRC common-lisp
+(make-vao 'mesh) => vao-instance
+#+END_SRC
+***** Binding a VAO instance
+Binding a vao instance for rendering is done with:
+
+#+BEGIN_SRC common-lisp
+(vao-bind <vao-instance>)
+#+END_SRC
+
+After the binding, you can perform the draw calls to render the data
+stored on the GPU.
+***** Drawing the VAO information
+After the VAO instance has been created and the Buffer Manager (see next
+section) initialized and all data buffered into the GPU. We can bind the VAO and
+draw the data using various means.
+
+There are 6 ways to draw the data that you've sent to the GPU.
+
+****** Draw Arrays
+You can draw the buffered data as the primitive you denoted it in
+the with-layout-properties form using this function.  By
+default the entire set of verticies in the enabled buffered data
+will be drawn.
+
+However you can supply the start vertex and the end vertex out of
+the buffered data which means you can limit the data drawn to be a
+subset of the buffered data. This is how you would encode multiple
+meshes (for example) into the buffered data and draw just what you
+want out of it. You would do this with FIRST and COUNT to specify
+the start and end vertex groupings.
+
+You are free to reinterpret the data by supplying PRIMITIVE which
+will override the specified one for the array-template-properties
+you specified.
+
+#+BEGIN_SRC common-lisp
+;; use glDrawArrays()
+(vao-draw-arrays vao &key primitive (first 0) count)
+#+END_SRC
+****** Draw Arrays Instanced
+This API is extremely similar to the previous Draw Arrays
+explanation, except you provide an instance count. This will draw
+the same set of verticies INSTANCE-COUNT number of times.  You can
+either use vertex attributes with a =:divisor= of 1 to control
+information specifically about each instance, or use =gl_InstanceID=
+in the shader, or both.
+
+#+BEGIN_SRC common-lisp
+;; use glDrawArraysInstanced()
+(vao-draw-arrays-instanced vao instance-count
+                           &key primitive (first 0) count)
+#+END_SRC
+****** Draw Elements Using Passed In Array
+This method of drawing uses a supplied (at call time) array of
+indexes (passed in as the INDEX-ARRAY argument) into the buffered
+vertex data. When this index array is combined with the primitive
+(either passed in or used from the array-template-properties form),
+it will draw those primitives using the referenced vertex data in
+the order specified by the index array.  When using the passed in
+INDEX-ARRAY the variable NAMED-LAYOUT-INDEX must be NIL.
+
+#+BEGIN_SRC common-lisp
+;; use glDrawElements()
+(vao-draw-elements vao &key primitive named-layout-index
+                   index-array count type)
+
+#+END_SRC
+****** Draw Elements Using an Element Array Buffer (AKA an IBO)
+This example is almost identical to the previous example. However,
+you will instead specify a symbol for NAME-INDEX-LAYOUT and have
+INDEX-ARRAY be NIL. The symbol is a named-layout in a
+with-layout-properties form whose binding target is an
+=:element-array-buffer=. This will be the IBO bound and used when
+drawing the primitives in the buffered vertex data.
+
+#+BEGIN_SRC common-lisp
+;; use glDrawElements()
+(vao-draw-elements vao &key primitive named-layout-index
+                   index-array count type)
+
+#+END_SRC
+****** Draw Elements Instanced using Passed In Array
+This is identical to the =Draw Element Using Passed In Array= method
+except you can pass in an INSTANCE-COUNT.
+
+#+BEGIN_SRC common-lisp
+;; use glDrawElementsInstanced()
+(vao-draw-elements-instanced vao instance-count
+                             &key primitive named-layout-index
+                             index-array count type)
+#+END_SRC
+****** Draw Elements Instanced using an Element Array Buffer (AKA an IBO)
+This method is identical to =Draw Elements Using an Element Array
+Buffer (AKA IBO)= except you will also specify an INSTANCE-COUNT for
+how many instances of the drawn primitives you'd like to draw.
+
+#+BEGIN_SRC common-lisp
+;; use glDrawElementsInstanced()
+(vao-draw-elements-instanced vao instance-count
+                             &key primitive named-layout-index
+                             index-array count type)
+#+END_SRC
+**** Datastore Manager API
+Here we describe the object which manages the datastores for a
+particular VAO and allows us to initialize, modify, and buffer
+attribute data to the GPU.
+
+The purpose of a Datastore Manager is to manage multiple native
+array representations of user/vertex attribute data. Each native
+array (holding the data for any number of actual attributes in any
+ordering) is called a =datastore=.
+
+Ata high level, the Datastore Manger looks into the vao
+instance, finds the layout-set, and creates internal datastore
+objects that use =static-vectors= to actually hold the
+data. Initially, the individual datastore objects are empty
+with no allocated static-vectors.
+
+***** Making a Datastore Manager
+Datastore Manager objects need to know which attributes data
+it is managing and how it should be layed out. Hence, they
+require a reference to the vao object. The vao object contains
+a reference to the layout set, which drives the internal structure
+of the static-vector buffers inside the datastore manager.
+
+#+BEGIN_SRC common-lisp
+;; Return a Datastore Manager object...
+(make-datastore-manager <vao instance>) => datastore manager instance
+#+END_SRC
+***** Allocation/Initialization of the storage
+Here we reason about the type of data you can pass to data-insert.
+****** Properties of Incoming Data (from disk or generation)
+Array(s) of incoming data can be:
+******* =Complete or Incomplete=
+/Complete/ means the array supplies enough data for /all/
+attributes defined in a specific =vertex-layout=
+of :separate, :block, or :interleave set of attributes.
+
+/Incomplete/ means a specific =vertex-layout= for
+a :block, :interleave, or :separate /cannot/ be satisfied
+with the incoming data in the array.
+******* =Native or Not-Native=
+/Native/ means the data is either in a native array with
+specifically the :element-type being correct and
+matching the attributes in the ultimate native type of
+the full =vertex-layout= for which the data is intended.
+
+/Non-native/ means any other type of array, like a
+non-typed array, displaced array, etc.
+******* =Copied or Handed-off=
+/Copied/ means the data copied, and potentially
+transformed into a native format, out of the supplied
+array into the internal Datastore Manager
+representation.
+
+/Handed-off/ means the current array should be used as
+given and ownership is handed over with no copying. It
+is checked that a handed-off array is legal to hand-off.
+******* =Combinations of Above Properties=
+Here we define which combinations of the above
+properties are legal during the insertion of array data
+into a Datastore Manager.
+
+=Legal=: (Complete, Native, Copied)
+=Legal=: (Complete, Native, Handed-off)
+=Legal=: (Complete, Not-Native, Copied)
+=Illegal=: (Complete, Not-Native, Handed-off)
+=Legal=: (Incomplete, Native, Copied)
+=Illegal=: (Incomplete, Native, Handed-off)
+=Legal=: (Incomplete, Non-Native, Copied)
+=Illegal=: (Incomplete, Non-native, Handed-off)
+****** Handing Off Memory to the Datastore Manager
+The concept of =handing-off= is further clarified by
+explicitly stating that once a hand-off has happened the
+user may not share structure with the handed-off array
+unless the user makes arrangements with the Datastore
+Manager instance to do so.
+
+If the user wants to hand-off, commit to gpu, load/gen
+more data, hand-off, commit to gpu, in a loop, then they
+either have to allocate a new array they can hand off,
+which has bad performance, _or_ they may ask for a "lock" on
+the specific datastore in question in the Datastore
+Manager for a certain number of attribute elements. The
+Datastore Manager returns a reference to the native array
+representation (which may include alignment padding) and
+the user may directly (and it must be correct because it
+is not validated) fill it in. Then the user can "unlock"
+the datastore.
+
+It is permissible that Datastore Manager return the same
+reference many times in a row for the same datastore when
+being asked to modify a constant number of vertex
+attributes--but it is not required to (as in the case of
+double bufferring the actual contents being uploaded to
+the GPU).
+
+The Datastore Manager is free to recycle internally
+managed buffers, keep as many as it likes, or give back
+refrences to arrays that contains /at least/ the number of
+requested attributes that are about to be modified.
+****** Incoming data DSL
+Herein we describe the DSL that we use to annotate the
+incoming data into the Datastore Manager. This allows the
+Datastore Manager to funnel the incoming data into the
+right spots in the native internal arrays.
+
+For the purposes of this discussion, this the datastore
+layout information that the Datastore Manager reference in
+this section would have access to:
+
+#+BEGIN_SRC common-lisp
+;; The attributes
+(position :type :float :count 3)
+(normal :type :float :count 3)
+(uv :type :float :count 2)
+(color :type :float :count 4)
+(selected-color :type :float :count 4)
+(highlight-color :type :float :count 4)
+(disabled-color :type :float :count 4)
+
+;; The layout-set referencing the above attributes.
+
+'(((:format :interleave)
+   (:binding-target :array-buffer)
+   (:usage-hint :static-draw))
+
+  (vertices (position normal uv)))
+
+'(((:format :block)
+   (:binding-target :array-buffer)
+   (:usage-hint :static-draw))
+
+  (colors (color))
+  (ui-colors (selected-color highlight-color disabled-color)))
+
+'(((:format :separate)
+   (:binding-target :array-buffer)
+   (:usage-hint :static-draw))
+
+  (colors (color)))
+#+END_SRC
+
+The incoming data DSL uses a similar structure as the layout DSL.
+
+The high level description of the incoming data DSL in BNF
+is:
+
+#+BEGIN_EXAMPLE
+incoming-data-DSL = '(attrlayout+)
+attrlayout = (layout-spec attrtemplate)
+layout-spec = (layout-kind memory-method)
+layout-kind = :separate | :interleave | :block
+memory-method :copy | :hand-off
+attrtemplate = layout-name | (attributes+)+
+layout-name = <named-layout>>
+attributes = <attribute name> | (<named-layout> <attribute-name>)
+#+END_EXAMPLE
+
+The :separate, :interleave, and :block layouts are
+denoting the INCOMING data layout, NOT the ultimate
+attribute layout into which that this data will ultimately
+end up being funneled.
+
+The :copy, :hand-off information tells the Datastore
+Manager if it is meant to copy/convert the data out of
+these arrays or actually accept ownership of these arrays
+(in which case the arrays are in the exact native format
+the Datastore Manager needs).
+
+Any time :hand-off is specified, the Datastore Manager
+carefully checks that the incoming data is exactly
+appropriate to use (e.g., the arrays types match, the
+internal data stored in it is exactly what is needed, the
+length is good, etc).
+
+This incoming data DSL language forms a sequential
+description of a set of incoming data arrays from where
+data will be pulled. The incoming data may be in a wildly
+different format (e.g., separate arrays, interleaved
+differently, etc) from the desired layout in the internal
+Datastore Manager defined by the layout-set information.
+
+This next example indicates three individual arrays will
+be passed into the Datastore Manager DATA-INSERT
+function. The first array is the POSITION attribute data,
+the second array is the NORMAL attribute data, and the
+third array is the UV attribute data. All three of these
+arrays must be copied into the Buffer Manager (as opposed
+to being handed off).
+
+The Datastore manager will assemble them into the correct
+interleaved format described by the assumed attribute set
+and layout set for this section.
+
+#+BEGIN_EXAMPLE
+,#+BEGIN_SRC common-lisp
+'(((:separate :copy) (position) (normal) (uv)))
+,#+END_SRC
+#+END_EXAMPLE
+
+This next example demonstrates that two arrays are to be
+passed into the Datastore Manager. The first is POSITION
+data, the second is an incoming data array which
+interleaves the NORMAL and UV data in a #(NUNUNUN....)
+format. All data is to be copied/transformed into the
+internal arrays as defined by the assumed attribute set and
+layout set for this section.
+
+#+BEGIN_EXAMPLE
+,#+BEGIN_SRC common-lisp
+'(((:separate :copy) (position))
+  ((:interleave :copy) (normal uv)))
+,#+END_SRC
+#+END_EXAMPLE
+
+This next example shows a complex set of incoming data. It
+specifies the incoming data in a wildly different format
+than the internal Datastore Manager layouts defined above.
+The Datastore Manager to process these incoming arrays and
+funnel the data into the right spots in the internal
+Buffer Manager arrays.
+
+When the Buffer Manager insertion process is done, the
+position normal and uv attribute data will end up in a
+single interleaved array. The data1 and data2 attribute
+data will end up in separate arrays, and the thing
+attribute data will end up in a separate array.
+
+Notice carefully that the user has stated the UV and
+DISABLED-COLOR data is actually in the correct format and
+should be handed off to the Datastore Manager as is
+internal array reference. The other arrays are to be
+copied/converted into the right form.
+
+It is the case that if in the process of checking that the
+data is to be copied, but the form is already correct,
+then the Data Manager will do a fast copy because there
+will be no need to convert the data.
+
+#+BEGIN_EXAMPLE
+,#+BEGIN_SRC common-lisp
+'(((:interleave :copy) (position color))
+  ((:block :copy) (normal selected-color))
+  ((:separate :copy) (highlight-color))
+  ((:separate :hand-off) (uv) (disabled-color)))
+,#+END_SRC
+#+END_EXAMPLE
+
+****** Consistency of Attribute Data int the Datastore Manager
+
+In this discussion the symbol =dsm= means a Datastore
+Manager instance.
+
+While attribute data is being inserted/appended to a
+=dsm=, the =dsm= is keeping track of the amount of data
+present for each attribute in relation to the default
+primitive and divisors for each attribute. When all of
+the tracking data for a =dsm= "makes sense" the =dsm= is in
+a consistent state.  If it "doesn't make sense" then the
+=dsm= is not in a consistent state.
+
+Here is an example to show how to compute consistency:
+
+#+BEGIN_EXAMPLE
+Givens
+------
+
+Default primitive :triangles.
+
+Attributes that are per vertex:
+
+(position :type :float :count 3 :divisor 0)
+(normal :type :float :count 3 :divisor 0)
+(uv :type :float :count 2 :divisor 0)
+
+Attributes that are per primitive:
+(color :type :float :count 4 :divisor 1)
+
+The Attribute Data
+------------------
+
+Now suppose we have this much attribute data stored in the dsm:
+
+9 positions
+9 normals
+9 uvs
+2 colors
+#+END_EXAMPLE
+
+The above example would is inconsistent because the 9
+positions, normals, and uvs imply there are 3 triangle
+primitives HOWEVER there are only =2= colors, which means there
+are only enough colors to satisfy 2 primitives at the divisor
+for that attributes. Hence, it is one color short and therefore
+causes the currently stored data to be inconsistent.
+
+Consistency is checked with this function:
+
+#+BEGIN_SRC common-lisp
+(data-manager-consistent-p dsm)
+;; --> Return T if all enabled attribute data is consistent.
+#+END_SRC
+
+Consistency is enforced when committing enabled
+attribute data to the GPU. A condition is signalled if
+the data is not consistent. However, there is a means
+to forgo the check and insert the data anyway. In this
+case, all missing attribute data is filled with the
+appropriate type of the number 0 as required to
+make the =dsm= consistent.
+
+****** Appending Attribute Data into the Datastore Manager
+
+Previously existing common-lisp or static-vector arrays of
+vertex attribute data may be inserted into the datastore
+with the function =data-append=.
+
+#+BEGIN_SRC common-lisp
+(data-append dsm incoming-data-dsl &rest data-arrays)
+#+END_SRC
+
+This next piece of code presents the environmental assumptions
+for the discussion about the use of =data-append=.
+
+#+BEGIN_SRC common-lisp
+(let* ((attr-set (make-attribute-set '(position :count 3)
+                                     '(normal :count 3)
+                                     '(uv :count 2)
+                                     '(color :count 4 :divisor 1)))
+       (layout-set (make-layout-set
+                    attr-set :triangles
+                    '(((:data-format :interleave)
+                       (:binding-target :array-buffer)
+                       (:usage-hint :static-draw))
+                      (vertices (position normal uv)))
+                    '(((:data-format :separate)
+                       (:binding-target :array-buffer)
+                       (:usage-hint :static-draw))
+                      (colors (color)))))
+
+       (vao (make-vao layout-set))
+
+       (dsm (make-datastore-manager vao)))
+  ...)
+
+#+END_SRC
+
+Attribute data is thought of as a stream of attribute data
+being appended to internal storage in the Datastore
+Manager. Before adding data to the stream, we must
+indicate how to interpret the stream by specifying the
+primitive. After this is done, the Datastore Manager can
+perform a large number of inferences about the attribute
+data being inserted. Here is an example:
+
+#+BEGIN_SRC common-lisp
+;; I'm going to be appending this type of data until otherwise
+;; specified.
+(begin-primitive dsm :triangles)
+
+(data-append dsm
+             '(((:separate :copy)
+                (position) (normal) (uv) (color)))
+             ;; The position array
+             #(0 0 0 1 1 1 2 2 2 3 3 3 4 4 4 5 5 5)
+             ;; The normal array
+             #(5 5 5 6 6 6 7 7 7 8 8 8 9 9 9 10 10 10)
+             ;; The UV array
+             #(11 11 12 12 13 13 14 14 15 15 16 16)
+             ;; The color array
+             #(0 0 0 0 1 1 1 1))
+#+END_SRC
+
+At this point, the data-append can infer (because we said
+what the primitive was going to be):
+
+1. There are four arrays that correspond to position,
+   normal, uv, and color in the same order as defined in
+   the DSL.
+2. There are 6 attribute elements for position (which
+   has :divisor 0) because the position attribute has 3
+   floats, and the first array divided by 3 gives 6.
+   Datastore Manager knows how to interpret the array
+   because it has access to the attr-set in the dsm.
+3. There are 6 entries for normal for the same
+   above reason.
+4. There are 6 attributes for uv because 12 / 2
+   (the :count in the attr-set) is 6.
+5. However, the color attribute data only has =2= color element
+   entries because :divisor is 1.
+6. The incoming data is in non-typed CL vectors and =:copy=
+   is used in the incoming data DSL, so a conversion to
+   the internal native array format must happen.
+7. The incoming arrays are separate, so they must be
+   combined as appropriate into the specified interleaved
+   datastore arrays.
+8. All of the inserted attribute data resulted in a
+   =consistent= set of attribute data. This is because there
+   are 6 position attributes, 6 normal attributes, 6 uv
+   attributes, and 2 color attributes. The default divisor
+   for position, normal, and uv is 0, and for color is 1.
+
+The incoming DSL can be used other ways too as long as
+there is a meaningful way to extract the data. Suppose
+your incoming data is in block form. Also, you can
+separate the appending of the data between multiple
+=data-append= calls.
+
+#+BEGIN_SRC common-lisp
+;; TODO: This call is WRONG. can't deduce correct numbers
+;; of each attribute in all circumstances.
+;;
+;; I can fix this by requireing that in the :block, you
+;; must suply the SAME number of attributes in the array
+;; for all denoted attributes.
+(data-append dsm '(((:block :copy) (position uv)))
+             ;; The position information
+             #(0 0 0 1 1 1 2 2 2 3 3 3 4 4 4 5 5 5
+               ;; The UV information
+               11 11 12 12 13 13 14 14 15 15 16 16))
+
+(data-append dsm '(((:separate :copy) (normal)))
+             ;; The normal information
+             #(5 5 5 6 6 6 7 7 7 8 8 8 9 9 9 10 10 10))
+
+(data-append dsm '(((:separate :copy) (color)))
+             ;; The color information
+             #(0 0 0 0 1 1 1 1))
+
+#+END_SRC
+
+
+Again, the data-append function ensures that the data ends
+up in an interleaved fashion in a single array.
+
+TODO: Keep writing. Deal with the
+(begin-primitive dsm (:triangles 1024) (:lines 128) <etc>)
+API, it currently is not ready for primetime.
+
+Now, a fast case:
+
+In a fast case there are some constraints to the API:
+
+1. You must specify a complete map of the primitive data
+   views complete with the number of primitives. You can
+   do exactly one shortcut, which is if ALL of your data
+   is in one view and using the same primitive, you can
+   just supply the primitive keyword instead of the
+   ranges.
+2. There can be only ONE call to data-append per datastore
+   name and it must include all data for the attributes in
+   that data store in the correct layout and for the right
+   number of primitives.
+
+
+Insert data that is already in the right format
+#+BEGIN_SRC common-lisp
+(let ((data (make-array 27 ;; 3 verts, 3 normals, 3uvs, 1 triangle.
+                        :element-type 'single-float
+                        :initial-contents 0.0)))
+  ;; <fill data>
+
+  (buffer-insert buffer-manager '(((:interleave :hand-off) (position normal uv)))
+                 data))
+#+END_SRC
+
+Since we created the data for a particular layout, we could use a
+shorthand method like this where we name the array layout set the
+data is exactly intended for.
+
+#+BEGIN_SRC common-lisp
+(buffer-insert buffer-manager '(((:interleave :hand-off) 'vertex)) data))
+#+END_SRC
+****** Requesting N Attributes of Native Allocation for a =Vertex-layout=
+When allocating memory in a Buffer Manager through its interface, you must
+specify for which vertex layout you are allocating the space and how many
+entities of the template you want to allocate. An entity is defined as one
+complete unit of an array template. So, for the 'vertex layout, one complete
+unit is the data and space required for one group of (position normal uv).
+
+Here is an example:
+#+BEGIN_SRC common-lisp
+;; (buffer-allocate BUFFER-MANAGER LAYOUT-NAME NUM-ENTITIES)
+(buffer-allocate buffer-manager 'vertex 1024)
+#+END_SRC
+
+The result of the above function is that buffer-allocate will create (in an
+internal location to this Buffer Manager object) 1 native array that will
+contain enough cells to hold the 1024 instances of the (position normal uv)
+layout of attributes.
+
+The allocated array will look like
+#(PNUPNUPNU...) so the total amount of space required will be:
+
+NUM-ENTITIES *           | =how many entities we want=
+((sizeof :float) * 3) *  | =the size of a single position attribute=
+((sizeof :float) * 3) *  | =the size of the single normal attribute=
+((sizeof :float) * 3);   | =the size of the single uv atribute=
+
+So, in our example, assuming :float is represented in 4 bytes and
+there are no other alignment padding to be added, we compute:
+
+1024 * (4 * 3) * (4 * 3) * (4 * 3) = 1769472 bytes or 442,368
+floats.
+
+Here we show how to allocate 1 internal array instance for each of
+the array templates.
+
+#+BEGIN_SRC common-lisp
+;; See the DEFINE-VERTEX-ATTRIBUTES form for how these sizes were
+;; computed.
+(buffer-allocate buffer-manager 'vertex 1024) ;; 442,368 floats
+(buffer-allocate buffer-manager 'context 1024);; 442,368 floats
+(buffer-allocate buffer-manager 'data1 1024) ;; 3072 floats
+(buffer-allocate buffer-manager 'data2 1024) ;; 2048 ints
+(buffer-allocate buffer-manager 'stuff 1024) ;; 1024 floats
+(buffer-allocate buffer-manager 'thing 1024) ;; 3072 ints
+#+END_SRC
+
+***** Bufferring Buffer Manager Memory to GPU
+Internal attribute arrays natively stored in the Buffer Manager must be /buffered/
+to the GPU memory. This is a process which copies the data from main memory to
+the GPU memory. Once this is done, the main memory arrays could be deallocated
+(or kept around if you want to do streaming of data).
+
+#+BEGIN_EXAMPLE
+This call will buffer all available data to the GPU:
+
+#+BEGIN_SRC common-lisp
+(upload-buffers buffer-manager)
+#+END_SRC
+#+END_EXAMPLE
+
+NOTE: We need to add stuff for glBufferSubData().
+
+***** Enabling Vertex Attributes
+[NOTE: the automatic enabling sort of goes against the opengl default of NOT
+automatically enabling, but in this case, the Buffer Manager can know if it has
+a full pile of data in an internal array. It still might be valuable to not
+default to enabled, though]
+
+The Buffer Manager automatically enables the attributes which have all of their
+data specified. Specifically, using the =vertex= layout, if =position= and =uv= have
+been inserted, but =normal= hasn't, then =position= and =uv= will be enabled, but
+=normal= won't be. Then, when the array is bufferred to the card, there will be
+the default value of 0.0 in the normal portion of the interleaved data array.
+
+There is an API to enable and disable attributes.  You can specify a
+named layout, which will try to enable all attributes found
+associated with that named layout, or the attribute names
+themselves. Any attribute you try to enable which doesn't have
+backing data will signal a restartable condition which can ultimately
+allow you to do this. In general though, you don't want to enable
+attributes for which you have no data. The shader would get default
+values in that case.  Since it is defined, it is allowed.
+
+#+BEGIN_SRC common-lisp
+;; See if I can enable all attributes in the VERTEX named-layout
+(vao-enable buffer-manager 'vertex)
+;; SPecifically enable some attributes
+(vao-enable buffer-manager 'position 'offsets 'influence)
+;; disable some attributes
+(vao-disable buffer-manager 'position 'offsets)
+#+END_SRC
+
+Enabling an attribute array will enable the attributes index that it
+would normally use if all data for the layouts were present, no
+reorderings happen. This means, if I have three attributes, like A,
+B, C, (in that order) and I disable B, then A gets layout position 0,
+and C gets layout position 2.
+***** INPROGRESS Accessors to stored Buffer Manager data
+Here we otherwise provide examples of the Accessors, but no other
+explanation while we think about it.
+
+These setters convert their data into the right types and
+form into the native arrays held in the Buffer Manager. If
+we push towards a DSL to allow the user to specify whatever
+input they want, it might go beyond its worth. The
+autoflattening one might be useful enough.
+
+I don't know if there are more forms of these accessors, but this
+seems to be the smallest functional size of the API.
+
+All of these work with their list analogues.
+
+#+BEGIN_SRC common-lisp
+;; ;;;;;;;;
+;; Getters
+;; ;;;;;;;
+
+;; Return a copy of all position components at index 5
+(buffer-ref buffer-manager 'position 5) ;; -> #(1.0 2.0 3.0)
+
+;; Return the 0'th component (x) of position at index 5
+(buffer-ref buffer-manager 'position 5 0) ;; -> 1.0
+
+;; return the accessor component of position at index 5
+(buffer-ref buffer-manager 'position 5 'x) ;; -> 1.0
+
+;; return a copy of the specified accessors at index 5
+(buffer-ref buffer-manager 'position 5 'x 'y) ;; -> #(1.0 2.0)
+
+;; Return a flattened array of all information in a template
+;; specifier swatch of attribute data at an index of a named layout
+(buffer-ref buffer-manager 'vertex 5) ;; -> #(1 2 3 4 5 6 .5 .5)
+
+;; ;;;;;;;;
+;; Setters
+;; ;;;;;;;;
+
+;; Set all attribute name components at index 5.
+(setf (attr-ref datastore-manager 'position 5) #(1 2 3))
+
+;; Set component 0 of the position attribute at index 5.
+(setf (buffer-ref buffer-manager 'position 5 0) 42.2)
+
+;; Set component x of the position attribute at index 5.
+(setf (buffer-ref buffer-manager 'position 5 'x) 40.0)
+
+;; Set components x and y of the position attribute at index 5
+(setf (buffer-ref buffer-manager 'position 5 'x 'y) #(1.0 2.0))
+
+;; Set all components of all attributes at index 4 of a
+;; named-layout #(px py px nx ny nz uvx uvy)
+(setf (data-ref datastore-manager 'vertex 4) #(1 2 3 4 5 6 .5 .5))
+;; another varient (auto flatten the array)
+(setf (buffer-ref buffer-manager 'vertex 4) #(#(1 2 3) #(4 5 6) #(.5 .5)))
+#+END_SRC
+
+*NOTE:* |3b| requested an "appending" accessor so he can just quickly
+append individual attribute data without actually caring about an
+index number for that attributes position.
+**** INPROGRESS Examples
+
+All of these examples are subject to change depending upon the result
+of the above API description.
+***** Triangle soup (Functional API Using Defaults)
+An example to generate a set of triangles in a box. This example uses
+the functional API to manage the vao data.
+
+#+BEGIN_SRC common-lisp
+;;; the shaders have been left out of this example.
+
+;; Create the random box of triangles.
+(defun generate-random-triangle-mesh (vao num-triangles)
+  (let ((data-manager (gloss:make-data-manager vao))
+        ;; these are divisor 0, so I need (* 3 num-triangles) for them
+        (vertices (make-array (* 3 num-triangles)))
+        (uvs (make-array (* 3 num-triangles)))
+        ;; These are :divisor 1, so per primitive.
+        (normals (make-array num-triangles))
+        (colors (make-array num-triangles)))
+
+    ;; Compute each triangle.
+    (loop :for i :from 0 :below num-triangles :do
+       (let ( ;; First, compute vertex positions for the triangle.
+             (vertex-position-0 `#(,(random 1.0) ,(random 1.0) ,(random 1.0)))
+             (vertex-position-1 `#(,(random 1.0) ,(random 1.0) ,(random 1.0)))
+             (vertex-position-2 `#(,(random 1.0) ,(random 1.0) ,(random 1.0)))
+             ;; each triangle gets a random color mixed with the texture.
+             (color `#(,(random 1.0) ,(random 1.0) ,(random 1.0) ,(random 1.0)))
+             ;; Then compute the normal for the triangle.
+             (normal
+              (vec-normalize
+               (vec-cross
+                (vec-from-points vertex-position-0 vertex-position-1)
+                (vec-from-points vertex-position-0 vertex-position-2)))))
+
+         ;; NOTE: The winding might not be right here...
+         (setf (aref vertices (+ (* i 3) 0)) vertex-position-0
+               (aref vertices (+ (* i 3) 1)) vertex-position-1
+               (aref vertices (+ (* i 3) 2)) vertex-position-2)
+
+         ;; And each point gets a specific uv
+         (setf (aref uvs (+ (* i 3) 0)) #(0 0 0)
+               (aref uvs (+ (* i 3) 1)) #(0 1 0)
+               (aref uvs (+ (* i 3) 2)) #(1 0 0))
+
+         ;; Each triangle gets the single face normal and random color
+         (setf (aref normals i) normal)
+         (setf (aref colors i) color)))
+
+    ;; Now, we pack the data into the Data Manager. The Data Manager
+    ;; automatically destructures the incoming data not only according to the
+    ;; DSL, but the raw form of the data as well. For example, (aref vertices 0)
+    ;; is a 3 element array.
+    (gloss:data-insert data-manager
+                       '((:seperate :copy) (vertex) (normal) (uv) (color))
+                       vertices normals uvs colors)
+
+    ;; Now, we associate a "ref-id" with the offset and range of the set of
+    ;; attribute data we want to draw when we ask the VAO to be drawn. By
+    ;; default, if the user doesn't do this, the Data Manager will automatically
+    ;; do this operation (and ref-id 0 means all primitives in the data-store).
+    ;; These ref-id/ranges are shoved into the vao-instance.
+    ;;
+    ;; (make-data-view data-manager ref-id offset num-attributes)
+    (gloss:make-data-view data-manager 0 0 (* 3 num-triangles))
+
+    data-manager))
+
+(defun run-example ()
+  (let* ((attr-set
+          ;; Make the attribute set which defines what vetex attributes we
+          ;; will be needing.
+          (gloss:make-attribute-set
+           '((vertex :type float :count 3)
+             (normal :type float :count 3 :divisor 1)
+             (uv :type float :count 3)
+             (color :type float :count 4 :divisor 1))))
+         ;; Make the layout, which describes how the attributes are layed out
+         ;; in the arrays we'll be giving to opengl.
+         (layout-set  (gloss:make-layout-set
+                       attr-set
+                       :triangles
+                       '(((:format :interleave))
+                         ((vertices (vertex uv))))
+
+                       '(((:format :seperate))
+                         ((normals (normal))
+                          (colors (color)))))))
+
+    (with-sdl-and-open-all-set-up ()
+      (let* ((vao (gloss:make-vao layout-set))
+             (data-manager (generate-random-triangle-mesh vao 1024)))
+
+        ;; Move the data from main memory to the GPU memory.
+        (gloss:data-upload data-manager)
+
+        ;; TODO: Experimental. This means free the internal memory.
+        (gloss:data-release data-manager)
+
+        ;; Now, when we bind this VAO, this is what we intend on using for the
+        ;; attribute data streams from their respective vbos.
+        (gloss:vao-enable vao 'verticies 'normals 'colors)
+
+        (sdl2:with-event-loop (:method :poll)
+          (:quit () t)
+          (:idle ()
+                 (gl:clear :color-buffer)
+
+                 ;; This makes sense.
+                 (gloss:vao-bind vao)
+
+                 ;; Unless otherwise specified, this will draw the set of
+                 ;; primitives defined at "ref-id 0" in the vao.
+                 (gloss:vao-draw-arrays vao)
+
+                 ;; Suppose I wanted view 4
+                 ;;(gloss:vao-draw-arrays vao :view-id 4)
+
+                 ))))))
+#+END_SRC
+
+***** Triangle Soup (Functional API with Richer Interface)
+
+An example to generate a set of triangles in a box. This example uses
+the functional API to manage the vao data.
+
+#+BEGIN_SRC common-lisp
+;;; the shaders have been left out of this example.
+
+;; Initialize the set of attributes we're going to use
+(defun initialize-attributes ()
+  (let ((attr-set (gloss:make-attribute-set)))
+    (gloss:add-attribute
+     attr-set
+     '((vertex :type float :count 3)
+       (normal :type float :count 3 :divisor 1)
+       (uv :type float :count 3)
+       (color :type float :count 4 :divisor 1)))
+    attr-set))
+
+(defun initialize-layouts (attr-set)
+  (let ((layout-set (gloss:make-layout-set :triangles attr-set)))
+    (gloss:add-layouts
+     layout-set
+     (gloss:make-layout-template
+      ;; First argument is the properties of this layout
+      '((:format :interleave)
+        (:buffer-binding-target :array-buffer)
+        (:usage-hint :static-draw))
+      ;; Second argument is a list of binding like forms of one or
+      ;; more layout name, then the template holding attribute names
+      ;; defined in the attr-store
+      '((vertices (vertex uv))))
+
+     (gloss:make-layout-template
+      '((:format :seperate)
+        (:buffer-binding-target :array-buffer)
+        (:usage-hint :static-draw))
+      '((normals (normal))
+        (colors (color)))))
+    layout-set))
+
+;; Create the random box of triangles.
+(defun generate-random-triangle-mesh (vao num-triangles)
+  (let ((data-manager (gloss:make-data-manager vao))
+        ;; these are divisor 0, so I need (* 3 num-triangles) for them
+        (vertices (make-array (* 3 num-triangles)))
+        (uvs (make-array (* 3 num-triangles)))
+        ;; These are :divisor 1, so per primitive.
+        (normals (make-array num-triangles))
+        (colors (make-array num-triangles)))
+
+    ;; Compute each triangle.
+    (loop :for i :from 0 :below num-triangles :do
+       (let ( ;; First, compute vertex positions for the triangle.
+             (vertex-position-0 `#(,(random 1.0) ,(random 1.0) ,(random 1.0)))
+             (vertex-position-1 `#(,(random 1.0) ,(random 1.0) ,(random 1.0)))
+             (vertex-position-2 `#(,(random 1.0) ,(random 1.0) ,(random 1.0)))
+             ;; each triangle gets a random color mixed with the texture.
+             (color `#(,(random 1.0) ,(random 1.0) ,(random 1.0) ,(random 1.0)))
+             ;; Then compute the normal for the triangle.
+             (normal
+              (vec-normalize
+               (vec-cross
+                (vec-from-points vertex-position-0 vertex-position-1)
+                (vec-from-points vertex-position-0 vertex-position-2)))))
+
+         ;; NOTE: The winding might not be right here...
+         (setf (aref vertices (+ (* i 3) 0)) vertex-position-0
+               (aref vertices (+ (* i 3) 1)) vertex-position-1
+               (aref vertices (+ (* i 3) 2)) vertex-position-2)
+
+         ;; And each point gets a specific uv
+         (setf (aref uvs (+ (* i 3) 0)) #(0 0 0)
+               (aref uvs (+ (* i 3) 1)) #(0 1 0)
+               (aref uvs (+ (* i 3) 2)) #(1 0 0))
+
+         ;; Each triangle gets the single face normal and random color
+         (setf (aref normals i) normal)
+         (setf (aref colors i) color)))
+
+    ;; Now, we pack the data into the Data Manager. The Data Manager
+    ;; automatically destructures the incoming data not only according to the
+    ;; DSL, but the raw form of the data as well. For example, (aref vertices 0)
+    ;; is a 3 element array.
+    (gloss:data-insert data-manager
+                       '((:seperate :copy) (vertex) (normal) (uv) (color))
+                       vertices normals uvs colors)
+
+    ;; Now, we associate a "ref-id" with the offset and range of the set of
+    ;; attribute data we want to draw when we ask the VAO to be drawn. By
+    ;; default, if the user doesn't do this, the Data Manager will automatically
+    ;; do this operation (and ref-id 0 means all primitives in the data-store).
+    ;; These ref-id/ranges are shoved into the vao-instance.
+    ;;
+    ;; (make-data-view data-manager ref-id offset num-attributes)
+    (gloss:make-data-view data-manager 0 0 (* 3 num-triangles))
+
+    data-manager))
+
+(defun run-example ()
+  (let* ((attr-set (initialize-attributes))
+         (layout-set (initialize-layouts attr-set)))
+    (with-sdl-and-open-all-set-up ()
+      (let* ((vao (gloss:make-vao layout-set))
+             (data-manager (generate-random-triangle-mesh vao 1024)))
+
+        ;; Move the data from main memory to the GPU memory.
+        (gloss:data-upload data-manager)
+
+        ;; TODO: Experimental. This means free the internal memory.
+        (gloss:data-release data-manager)
+
+        ;; Now, when we bind this VAO, this is what we intend on using for the
+        ;; attribute data streams from their respective vbos.
+        (gloss:vao-enable vao 'verticies 'normals 'colors)
+
+        (sdl2:with-event-loop (:method :poll)
+          (:quit () t)
+          (:idle ()
+                 (gl:clear :color-buffer)
+
+                 ;; This makes sense.
+                 (gloss:vao-bind vao)
+
+                 ;; Unless otherwise specified, this will draw the set of
+                 ;; primitives defined at "ref-id 0" in the vao.
+                 (gloss:vao-draw-arrays vao)
+
+                 ;; Suppose I wanted view 4
+                 ;;(gloss:vao-draw-arrays vao :view-id 4)
+
+                 ))))))
+#+END_SRC
+* References                                                                      :note:
+:PROPERTIES:
+:CREATED: [2016-10-02 Sun 16:39]
+:END:
+
+The following are OpenGL references that may be useful during the planning and
+implementation of the library.
+
++ [[https://www.opengl.org/wiki/Vertex_Specification][Vertex Specification]] :: States generalizations about when to use interleaved
+     arrays.
+
++ [[https://www.opengl.org/wiki/Vertex_Specification_Best_Practices][Vertex Specification Best Practices]] :: Indicates how data arrays can be layed
+     out, specifically the differences between:
+
++ =Vertex Buffer Object Formats=
++ =separate= :: #((VVV...) (NNN...) (CCC...))
++ =block= :: #(VVV...NNN...CCC...)
++ =interleave= :: #(VNCVNCVNC...)
+* Notes
+We have a concept of "double bufferring" of the internal arrays in the Buffer
+Manager object. We decided to ignore this until we complete the API since it is
+confusing to reference how to do it without knowing how this would work with one
+internal array per attribute set.
