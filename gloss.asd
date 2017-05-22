@@ -6,7 +6,7 @@
   :license "MIT"
   :description "A system aiming to simplify usage of the modern OpenGL interface."
   :depends-on (#:alexandria
-	       #:sdl2
+               #:sdl2
                #:ieee-floats
                #:static-vectors
                #:cl-opengl)
@@ -20,14 +20,26 @@
                (:module "vao"
                 :components
                 ((:file "package")
-		 (:file "conditions")
+                 (:file "conditions")
                  (:file "attributes")
                  (:file "layout")
                  (:file "vao")
-		 (:file "array-ops")
-		 (:file "datastore")
+                 (:file "array-ops")
+                 (:file "datastore")
+		 (:file "datastore-array-buffer")
+		 (:file "datastore-atomic-counter-buffer")
+		 (:file "datastore-copy-buffer")
+		 (:file "datastore-dispatch-indirect-buffer")
+		 (:file "datastore-draw-indirect-buffer")
+		 (:file "datastore-element-array-buffer")
+		 (:file "datastore-pixel-buffer")
+		 (:file "datastore-query-buffer")
+		 (:file "datastore-shader-storage-buffer")
+		 (:file "datastore-texture-buffer")
+		 (:file "datastore-transform-feedback-buffer")
+		 (:file "datastore-uniform-buffer")
                  (:file "test")
-		 (:file "example-0")))
+                 (:file "example-0")))
                (:module "shader"
                 :components
                 ((:file "shader")))))
