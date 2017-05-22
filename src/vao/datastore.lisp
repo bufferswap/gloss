@@ -146,9 +146,9 @@ into the datastore with which this ATTR-DESC is associated."))
 ;; native machine memory arrays (such as static-vectors) which are
 ;; suitable for upload to the GPU.
 (defclass datastore-array-buffer (datastore) ())
-(defclass datastore-array-separate-buffer (datastore-array-buffer) ())
-(defclass datastore-array-interleave-buffer (datastore-array-buffer) ())
-(defclass datastore-array-block-buffer (datastore-array-buffer) ())
+(defclass datastore-array-buffer-separate (datastore-array-buffer) ())
+(defclass datastore-array-buffer-interleave (datastore-array-buffer) ())
+(defclass datastore-array-buffer-block (datastore-array-buffer) ())
 
 
 ;; These should get their own files.
